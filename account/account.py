@@ -47,7 +47,7 @@ class Account:
             )
 
         else:
-            self.setup_new_session(code_retrieval_func)
+            await self.setup_new_session(code_retrieval_func)
 
         try:
             await self.app.start()
@@ -56,7 +56,7 @@ class Account:
             if not revalidate:
                 raise
 
-            self.setup_new_session(code_retrieval_func)
+            await self.setup_new_session(code_retrieval_func)
 
             await self.app.start()
 
@@ -79,7 +79,7 @@ class Account:
 
         code_object = await self.app.send_code(self.phone)
 
-        self.app.sign_in(self.phone, code_object.phone_code_hash, code_retrieval_func())
+        await self.app.sign_in(self.phone, code_object.phone_code_hash, code_retrieval_func())
 
     async def stop(self):
         session_str = await self.app.export_session_string()
