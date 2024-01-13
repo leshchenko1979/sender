@@ -60,7 +60,7 @@ def set_up_clients(settings):
 
     accounts = AccountCollection(
         {
-            account: Account(fs, account + ".session")
+            account: Account(fs, account)
             for account in distinct_account_ids
         },
         fs,
