@@ -1,5 +1,5 @@
 import collections
-import json
+import orjson as json
 import os
 
 import gspread
@@ -12,7 +12,7 @@ Setting = collections.namedtuple(
 
 @ensure(lambda result: result, "No settings found")
 def load_settings() -> list[Setting]:
-    service_dict = json.loads(os.environ["GOOGLE_SERVICE_ACCOUNT"])
+    service_dict = json.loads(os.environ["GOOGLE_SERVICE_ACCOUNT"], )
     gc = gspread.service_account_from_dict(service_dict)
     sheet = gc.open_by_url(os.environ["SPREADSHEET_URL"])
     worksheet = sheet.get_worksheet(0)

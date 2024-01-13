@@ -2,5 +2,6 @@ croniter
 gspread
 python-dotenv
 icontract
+orjson
 -r account/requirements.txt
 -r supabasefs/requirements.txt
