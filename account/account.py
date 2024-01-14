@@ -4,6 +4,7 @@ import datetime as dt
 import os
 
 import fsspec
+import icontract
 import pyrogram
 from pyrogram.errors import AuthKeyUnregistered, UserDeactivated
 
@@ -32,8 +33,9 @@ class Account:
     def __repr__(self) -> str:
         return f"<Account {self.filename}>"
 
+    @icontract.require(lambda invalid: invalid in ["ignore", "raise", "revalidate"])
     async def start(
-        self, revalidate=True, code_retrieval_func=lambda: input("Enter code:")
+        self, invalid: str, code_retrieval_func=lambda: input("Enter code:")
     ):
         if self.fs.exists(self.filename):
             with self.fs.open(self.filename, "r") as f:
@@ -46,19 +48,28 @@ class Account:
                 no_updates=True,
             )
 
-        else:
+        elif invalid == "revalidate":
             await self.setup_new_session(code_retrieval_func)
+
+        elif invalid == "raise":
+            raise RuntimeError(f"Session file {self.filename} not found")
+
+        else:
+            return
 
         try:
             await self.app.start()
 
         except (AuthKeyUnregistered, UserDeactivated):
-            if not revalidate:
+            if invalid == "raise":
                 raise
 
-            await self.setup_new_session(code_retrieval_func)
+            elif invalid == "revalidate":
+                await self.setup_new_session(code_retrieval_func)
+                await self.app.start()
 
-            await self.app.start()
+            elif invalid == "ignore":
+                return
 
         self.started = True
         self.flood_wait_timeout = 0
@@ -79,9 +90,14 @@ class Account:
 
         code_object = await self.app.send_code(self.phone)
 
-        await self.app.sign_in(self.phone, code_object.phone_code_hash, code_retrieval_func())
+        await self.app.sign_in(
+            self.phone, code_object.phone_code_hash, code_retrieval_func()
+        )
 
     async def stop(self):
+        if not self.started:
+            return
+
         session_str = await self.app.export_session_string()
 
         with self.fs.open(self.filename, "w") as f:
@@ -92,9 +108,10 @@ class Account:
         self.started = False
 
     @contextlib.asynccontextmanager
-    async def session(self):
+    @icontract.require(lambda invalid: invalid in ["ignore", "raise", "revalidate"])
+    async def session(self, invalid: str):
         try:
-            await self.start()
+            await self.start(invalid)
             yield
 
         finally:
@@ -102,23 +119,21 @@ class Account:
 
 
 class AccountCollection:
-    accounts: list[Account]
+    accounts: dict[str, Account]
 
-    def __init__(self, accounts: dict[str, Account], fs, revalidate_sessions=True):
+    @icontract.require(lambda invalid: invalid in ["ignore", "raise", "revalidate"])
+    def __init__(self, accounts: dict[str, Account], fs, invalid: str):
         self.accounts = accounts
         self.fs = fs
-        self.revalidate_sessions = revalidate_sessions
+        self.invalid = invalid
 
     def __getitem__(self, item):
         return self.accounts[item]
 
     async def start_sessions(self):
         await asyncio.gather(
-            *(
-                acc.start(revalidate=self.revalidate_sessions)
-                for acc in self.accounts.values()
-            ),
-            return_exceptions=not self.revalidate_sessions,
+            *(acc.start(invalid=self.invalid) for acc in self.accounts.values()),
+            return_exceptions=self.invalid != "ignore",
         )
 
     async def close_sessions(self):

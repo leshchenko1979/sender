@@ -4,14 +4,24 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Validate sessions",
+            "label": "Run streamlit with current file",
             "type": "shell",
-            "command": "streamlit run validate_sessions.py",
+            "command": "streamlit run ${file}",
             "problemMatcher": [],
             "group": {
                 "kind": "build",
                 "isDefault": true
             }
-        }
+        },
+        {
+            "label": "Sender: Build & upload to Yandex Cloud",
+            "type": "shell",
+            "command": "make_sender.bat",
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
     ]
 }

@@ -2,16 +2,18 @@ import asyncio
 import datetime
 import os
 import traceback
-from datetime import datetime, timezone as tz
+from datetime import datetime
+from datetime import timezone as tz
 
 import croniter
 import dotenv
 import pyrogram
 import supabase
+from flask import Flask
 
 from account.account import Account, AccountCollection
-from supabasefs.supabasefs import SupabaseTableFileSystem
 from settings import load_settings
+from supabasefs.supabasefs import SupabaseTableFileSystem
 
 
 async def main():
@@ -22,22 +24,22 @@ async def main():
     async with accounts.session():
         for setting in settings:
             try:
-                if setting.active:
-                    result = await send_message(setting)
-                else:
-                    result = "Setting skipped"
+                result = (
+                    await send_message(setting) if setting.active else "Setting skipped"
+                )
+            except Exception:
+                result = f"Error: {traceback.format_exc()}"
 
+            try:
                 add_log_entry(setting, result)
+            except Exception:
+                result = f"Logging error: {traceback.format_exc()}"
 
-                if "error" in result.lower():
-                    errors.append(f"{setting}: {result}")
+            if "error" in result.lower():
+                errors.append(f"{setting}: {result}")
 
-            except Exception as e:
-                await alert([f"Ошибка в настройке: {setting}", traceback.format_exc()])
-                raise
-
-        if errors:
-            await alert(errors)
+    if errors:
+        await alert(errors, fs)
 
     print("Messages sent and logged successfully")
 
@@ -45,7 +47,7 @@ async def main():
 def set_up_clients(settings):
     # Set up Telegram and Supabase clients as global variables
 
-    global supabase_client, accounts
+    global supabase_client, accounts, fs
 
     supabase_client = supabase.create_client(
         os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"]
@@ -53,17 +55,15 @@ def set_up_clients(settings):
 
     fs = SupabaseTableFileSystem(supabase_client, "sessions")
 
-    distinct_account_ids = set(setting.account for setting in settings)
+    distinct_account_ids = {setting.account for setting in settings}
 
     if not distinct_account_ids:
         raise ValueError("No accounts found")
 
     accounts = AccountCollection(
-        {
-            account: Account(fs, account)
-            for account in distinct_account_ids
-        },
+        {account: Account(fs, account) for account in distinct_account_ids},
         fs,
+        invalid="raise",
     )
 
 
@@ -74,8 +74,7 @@ async def send_message(setting):
     try:
         should_be_run_result = should_be_run(setting, log_entry)
     except Exception as e:
-        result = f"Error: Could not figure out the crontab setting: {str(e)}"
-        return result
+        return f"Error: Could not figure out the crontab setting: {str(e)}"
 
     if should_be_run_result:
         try:
@@ -109,10 +108,7 @@ def get_recent_cron_datetime(crontab):
     # Use croniter to parse the crontab string
     cron = croniter.croniter(crontab, datetime.now(tz.utc))
 
-    # Get the previous datetime that matches the crontab
-    recent_datetime = cron.get_prev(datetime)
-
-    return recent_datetime
+    return cron.get_prev(datetime)
 
 
 def get_last_successful_entry(account, chat_id):
@@ -128,33 +124,34 @@ def get_last_successful_entry(account, chat_id):
         .execute()
     )
 
-    if result.data:
-        return result.data[0]
-    else:
-        return None
+    return result.data[0] if result.data else None
 
 
 def add_log_entry(setting, result):
     # Add log entry
     supabase_client.table("log_entries").insert(
-        {
-            "account": setting.account,
-            "chat_id": setting.chat_id,
-            "result": result,
-        }
+        {"account": setting.account, "chat_id": setting.chat_id, "result": result}
     ).execute()
 
     return
 
 
-async def alert(errors):
+async def alert(errors, fs):
     # Send alert message
-    alert_message = "\n".join(errors)
-    await accounts["79852227949"].app.send_message(
-        chat_id=os.environ["ALERT_CHAT"], text=alert_message
-    )
+    alert_acc = Account(fs, os.environ["ALERT_ACCOUNT"])
+    async with alert_acc.session(invalid="raise"):
+        await alert_acc.app.send_message(
+            chat_id=os.environ["ALERT_CHAT"], text="\n".join(errors)
+        )
 
-    return
+
+app = Flask(__name__)
+
+
+@app.route("/")
+def handler():
+    dotenv.load_dotenv()
+    asyncio.run(main())
 
 
 if __name__ == "__main__":

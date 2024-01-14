@@ -1,0 +1,24 @@
+# downgrade to python 3.11 because tgcrypto pypi distro doesn't have 3.12 images yet
+FROM python:3.11.7-slim-bullseye
+
+LABEL Name=sender Version=0.0.1
+
+RUN pip install -U --no-cache wheel setuptools pip
+
+ADD /account /account
+ADD /supabasefs /supabasefs
+ADD /sender_requirements.txt /
+
+# WORKDIR /src
+
+RUN pip install -r sender_requirements.txt --no-cache
+
+ADD /.env /
+ADD /settings.py /
+ADD /sender.py /
+
+EXPOSE 5000:8080
+
+ENV FLASK_APP=sender.py
+
+CMD ["flask", "run", "--host", "0.0.0.0", "--port", "8080"]
