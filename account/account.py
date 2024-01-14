@@ -108,28 +108,24 @@ class Account:
                 session_str = f.read()
 
             self.app = pyrogram.Client(
-                self.phone,
-                session_string=session_str,
-                in_memory=True,
-                no_updates=True,
+                self.phone, session_string=session_str, in_memory=True, no_updates=True
             )
+
+            try:
+                await self.app.start()
+
+            except (AuthKeyUnregistered, UserDeactivated):
+                if revalidate:
+                    await self.setup_new_session(
+                        code_retrieval_func, password_retrieval_func
+                    )
+                else:
+                    raise
 
         elif revalidate:
             await self.setup_new_session(code_retrieval_func, password_retrieval_func)
         else:
             raise RuntimeError(f"No session file for {self.phone}")
-
-        try:
-            await self.app.start()
-
-        except (AuthKeyUnregistered, UserDeactivated):
-            if revalidate:
-                await self.setup_new_session(
-                    code_retrieval_func, password_retrieval_func
-                )
-                await self.app.start()
-            else:
-                raise
 
         self.started = True
         self.flood_wait_timeout = 0

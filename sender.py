@@ -64,7 +64,7 @@ async def main():
     except AccountStartFailed:
         errors.append(
             "Не все аккаунты были привязаны.\n"
-            "Запустите https://validate-sessions.streamlit.app"
+            "Запустите https://drive.google.com/file/d/1zOL5rUO1XRteO_xK1ue16UpiJiv1LTEC/view?usp=sharing"
         )
     except Exception:
         errors.append(f"Error: {traceback.format_exc()}")
