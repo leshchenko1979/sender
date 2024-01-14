@@ -98,14 +98,17 @@ class Account:
         if not self.started:
             return
 
-        session_str = await self.app.export_session_string()
-
-        with self.fs.open(self.filename, "w") as f:
-            f.write(session_str)
+        await self.save_session_string()
 
         await self.app.stop()
 
         self.started = False
+
+    async def save_session_string(self):
+        session_str = await self.app.export_session_string()
+
+        with self.fs.open(self.filename, "w") as f:
+            f.write(session_str)
 
     @contextlib.asynccontextmanager
     @icontract.require(lambda invalid: invalid in ["ignore", "raise", "revalidate"])

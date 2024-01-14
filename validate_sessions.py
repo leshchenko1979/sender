@@ -26,6 +26,8 @@ CODE_REQUESTED = 2
 PASSWORD_NEEDED = 3
 ACCEPTED = 4
 FLOOD_WAIT = 5
+WRONG_CODE = 6
+WRONG_PASSWORD = 7
 
 
 async def main():
@@ -43,8 +45,6 @@ async def main():
     init_state_cache()
 
     await validate_accs(settings, fs)
-
-    st.write("Готово")
 
 
 @st.cache_data(show_spinner="Загружаю настройки...")
@@ -69,6 +69,7 @@ async def validate_accs(settings, fs):
     distinct_account_ids = {
         setting.account for setting in settings if setting.active
     } | {os.environ["ALERT_ACCOUNT"]}
+
     for account in distinct_account_ids:
         with st.container(border=True):
             st.subheader(to_phone_format(account))
@@ -108,8 +109,9 @@ async def init_account(fs, account):
 
         try:
             await acc.app.start()
-            acc.state = ACCEPTED
+
             await acc.app.stop()
+            acc.state = ACCEPTED
 
         except (AuthKeyUnregistered, UserDeactivated):
             acc.state = AUTH_NEEDED
@@ -130,9 +132,11 @@ async def init_account(fs, account):
         try:
             await acc.app.connect()
             acc.code_object = await acc.app.send_code(account)
+
         except FloodWait as e:
             acc.state = FLOOD_WAIT
             acc.flood_wait_timeout = e.value
+
         else:
             print("Code sent to", account, acc.code_object)
             acc.state = CODE_REQUESTED
@@ -145,36 +149,54 @@ async def display_acc(account, acc: Account):
         st.success("OK")
         return
 
-    if acc.state == CODE_REQUESTED:
-        code = st.text_input("Введите код, пришедший в Telegram:")
-        if not code:
-            st.stop()
-        else:
+    if acc.state in {CODE_REQUESTED, WRONG_CODE}:
+        if acc.state == WRONG_CODE:
+            st.error("Неверный код")
+
+        code = st.text_input(
+            "Введите код, пришедший в Telegram:", key=f"code_{acc.phone}"
+        )
+        if code:
             try:
+                st.session_state[f"code_{acc.phone}"] = ""
+
                 await acc.app.sign_in(account, acc.code_object.phone_code_hash, code)
+
+                acc.started = True
                 await acc.stop()
+
                 acc.state = ACCEPTED
-                st.rerun()
+
             except SessionPasswordNeeded:
                 acc.state = PASSWORD_NEEDED
-                st.rerun()
-            except PhoneCodeInvalid:
-                st.error("Неверный код")
-                st.stop()
 
-    if acc.state == PASSWORD_NEEDED:
-        password = st.text_input("Введите пароль от Telegram:")
-        if not password:
-            st.stop()
-        else:
+            except PhoneCodeInvalid:
+                acc.state = WRONG_CODE
+
+            st.rerun()
+
+    if acc.state in {PASSWORD_NEEDED, WRONG_PASSWORD}:
+        if acc.state == WRONG_PASSWORD:
+            st.error("Неверный пароль")
+
+        password = st.text_input(
+            "Введите пароль от Telegram:", type="password", key=f"password_{acc.phone}"
+        )
+        if password:
             try:
+                st.session_state[f"password_{acc.phone}"] = ""
+
                 await acc.app.check_password(password)
+
+                acc.started = True
                 await acc.stop()
+
                 acc.state = ACCEPTED
-                st.rerun()
+
             except PasswordHashInvalid:
-                st.error("Неверный пароль")
-                st.stop()
+                acc.state = WRONG_PASSWORD
+
+            st.rerun()
 
     if acc.state == FLOOD_WAIT:
         st.error(
