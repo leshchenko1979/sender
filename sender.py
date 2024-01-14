@@ -185,6 +185,7 @@ app = Flask(__name__)
 def handler():
     dotenv.load_dotenv()
     asyncio.run(main())
+    return "OK"
 
 
 if __name__ == "__main__":
