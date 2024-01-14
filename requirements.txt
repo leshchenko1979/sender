@@ -1,5 +1,6 @@
 croniter
 gspread
 icontract
+pydantic
 -r account/requirements.txt
 -r supabasefs/requirements.txt

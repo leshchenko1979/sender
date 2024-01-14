@@ -2,5 +2,6 @@ croniter
 gspread
 python-dotenv
 flask
+pydantic
 -r account/requirements.txt
 -r supabasefs/requirements.txt
