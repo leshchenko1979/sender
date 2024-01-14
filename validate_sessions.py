@@ -71,8 +71,13 @@ async def validate_accs(settings, fs):
     } | {os.environ["ALERT_ACCOUNT"]}
     for account in distinct_account_ids:
         with st.container(border=True):
-            st.subheader(f"Аккаунт: {account}")
+            st.subheader(to_phone_format(account))
             await check_account(fs, account)
+
+
+def to_phone_format(s):
+    # Transform a 11-digit string to a +X (XXX) XXX-XX-XX format
+    return f"+{s[:1]} ({s[1:4]}) {s[4:7]}-{s[7:9]}-{s[9:]}"
 
 
 async def check_account(fs, account):
@@ -174,8 +179,17 @@ async def display_acc(account, acc: Account):
     if acc.state == FLOOD_WAIT:
         st.error(
             "Слишком много неправильных попыток авторизации. "
-            f"Ожидайте {acc.flood_wait_timeout} секунд."
+            f"Ожидайте {humanized_seconds(acc.flood_wait_timeout)}."
         )
+
+
+def humanized_seconds(seconds: int) -> str:
+    if seconds < 60:
+        return f"{seconds} секунд"
+    elif seconds < 3600:
+        return f"{seconds // 60} минут"
+    else:
+        return f"{seconds // 3600} часов"
 
 
 asyncio.run(main())
