@@ -13,6 +13,7 @@ from pyrogram.errors import (
     SessionPasswordNeeded,
     PasswordHashInvalid,
     PhoneCodeInvalid,
+    FloodWait,
 )
 
 
@@ -24,11 +25,13 @@ AUTH_NEEDED = 1
 CODE_REQUESTED = 2
 PASSWORD_NEEDED = 3
 ACCEPTED = 4
+FLOOD_WAIT = 5
 
 
 async def main():
     if "GOOGLE_SERVICE_ACCOUNT" not in os.environ:
         import dotenv
+
         dotenv.load_dotenv()
 
     st.header("Проверка аккаунтов для рассылки ОД")
@@ -63,7 +66,9 @@ def init_state_cache():
 
 
 async def validate_accs(settings, fs):
-    distinct_account_ids = {setting.account for setting in settings if setting.active} | {os.environ["ALERT_ACCOUNT"]}
+    distinct_account_ids = {
+        setting.account for setting in settings if setting.active
+    } | {os.environ["ALERT_ACCOUNT"]}
     for account in distinct_account_ids:
         with st.container(border=True):
             st.subheader(f"Аккаунт: {account}")
@@ -117,10 +122,15 @@ async def init_account(fs, account):
             phone_number=account,
         )
 
-        await acc.app.connect()
-        acc.code_object = await acc.app.send_code(account)
-        print("Code sent to", account, acc.code_object)
-        acc.state = CODE_REQUESTED
+        try:
+            await acc.app.connect()
+            acc.code_object = await acc.app.send_code(account)
+        except FloodWait as e:
+            acc.state = FLOOD_WAIT
+            acc.flood_wait_timeout = e.value
+        else:
+            print("Code sent to", account, acc.code_object)
+            acc.state = CODE_REQUESTED
 
     return acc
 
@@ -160,6 +170,12 @@ async def display_acc(account, acc: Account):
             except PasswordHashInvalid:
                 st.error("Неверный пароль")
                 st.stop()
+
+    if acc.state == FLOOD_WAIT:
+        st.error(
+            "Слишком много неправильных попыток авторизации. "
+            f"Ожидайте {acc.flood_wait_timeout} секунд."
+        )
 
 
 asyncio.run(main())
