@@ -4,6 +4,7 @@ import os
 import traceback
 from datetime import datetime
 from datetime import timezone as tz
+from zoneinfo import ZoneInfo
 
 import croniter
 import dotenv
@@ -99,17 +100,34 @@ def should_be_run(setting, last_successful_entry):
     if not last_successful_entry:
         return True
 
-    return get_recent_cron_datetime(setting.schedule) > datetime.fromisoformat(
-        last_successful_entry["datetime"]
+    return check_cron_tz(
+        setting.schedule,
+        ZoneInfo("Europe/Moscow"),
+        datetime.fromisoformat(last_successful_entry["datetime"]),
+        datetime.now(tz=tz.utc),
     )
 
 
-def get_recent_cron_datetime(crontab):
-    # Use croniter to parse the crontab string
-    cron = croniter.croniter(crontab, datetime.now(tz.utc))
+def check_cron(crontab: str, last_run: datetime, now: datetime) -> bool:
+    # Return True if, according to the crontab, there should have been another run between the last run and now
+    cron = croniter.croniter(crontab, last_run)
+    next_run = cron.get_next(datetime)
+    return next_run <= now
 
-    return cron.get_prev(datetime)
 
+def check_cron_tz(
+    crontab: str, crontab_tz: ZoneInfo, last_run: datetime, now: datetime
+) -> bool:
+    """Return True if, according to the crontab, there should have been
+    another run between the last run and now.
+
+    Crontab is in another timezone indicated by crontab_tz.
+    """
+
+    last_run_utc = last_run.astimezone(crontab_tz).replace(tzinfo=None)
+    now_utc = now.astimezone(crontab_tz).replace(tzinfo=None)
+
+    return check_cron(crontab, last_run_utc, now_utc)
 
 def get_last_successful_entry(account, chat_id):
     # Query for most recent log entry
