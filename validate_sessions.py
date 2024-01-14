@@ -63,7 +63,7 @@ def init_state_cache():
 
 
 async def validate_accs(settings, fs):
-    distinct_account_ids = {setting.account for setting in settings if setting.active}
+    distinct_account_ids = {setting.account for setting in settings if setting.active} | {os.environ["ALERT_ACCOUNT"]}
     for account in distinct_account_ids:
         with st.container(border=True):
             st.subheader(f"Аккаунт: {account}")
