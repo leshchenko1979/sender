@@ -6,7 +6,7 @@ import os
 import fsspec
 import icontract
 import pyrogram
-from pyrogram.errors import AuthKeyUnregistered, UserDeactivated
+from pyrogram.errors import AuthKeyUnregistered, UserDeactivated, RPCError
 
 
 class Account:
@@ -31,11 +31,10 @@ class Account:
         self.app = None
 
     def __repr__(self) -> str:
-        return f"<Account {self.filename}>"
+        return f"<Account {self.phone}>"
 
-    @icontract.require(lambda invalid: invalid in ["ignore", "raise", "revalidate"])
     async def start(
-        self, invalid: str, code_retrieval_func=lambda: input("Enter code:")
+        self, revalidate: bool, code_retrieval_func=lambda: input("Enter code:")
     ):
         if self.fs.exists(self.filename):
             with self.fs.open(self.filename, "r") as f:
@@ -48,28 +47,20 @@ class Account:
                 no_updates=True,
             )
 
-        elif invalid == "revalidate":
+        elif revalidate:
             await self.setup_new_session(code_retrieval_func)
-
-        elif invalid == "raise":
-            raise RuntimeError(f"Session file {self.filename} not found")
-
         else:
-            return
+            raise RuntimeError(f"No session file for {self.phone}")
 
         try:
             await self.app.start()
 
         except (AuthKeyUnregistered, UserDeactivated):
-            if invalid == "raise":
-                raise
-
-            elif invalid == "revalidate":
+            if revalidate:
                 await self.setup_new_session(code_retrieval_func)
                 await self.app.start()
-
-            elif invalid == "ignore":
-                return
+            else:
+                raise
 
         self.started = True
         self.flood_wait_timeout = 0
@@ -134,10 +125,21 @@ class AccountCollection:
         return self.accounts[item]
 
     async def start_sessions(self):
-        await asyncio.gather(
-            *(acc.start(invalid=self.invalid) for acc in self.accounts.values()),
-            return_exceptions=self.invalid != "ignore",
+        done, pending = await asyncio.wait(
+            (
+                asyncio.create_task(acc.start(revalidate=self.invalid == "revalidate"))
+                for acc in self.accounts.values()
+            ),
+            return_when=asyncio.FIRST_EXCEPTION
+            if self.invalid != "ignore"
+            else asyncio.ALL_COMPLETED,
         )
+
+        # Check if any exceptions occured during the above wait
+        if self.invalid != "ignore":
+            for exc in done:
+                if exc.exception():
+                    raise exc.exception()
 
     async def close_sessions(self):
         await asyncio.gather(
