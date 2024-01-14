@@ -11,10 +11,24 @@ import dotenv
 import pyrogram
 import supabase
 from flask import Flask
+from pyrogram.errors import ChatWriteForbidden
 
 from account.account import Account, AccountCollection
 from settings import load_settings
 from supabasefs.supabasefs import SupabaseTableFileSystem
+
+
+class SenderAccount(Account):
+    async def send_message(self, chat_id, text, forced_entry=True):
+        try:
+            return await self.app.send_message(chat_id, text)
+
+        except ChatWriteForbidden:
+            if forced_entry:
+                await self.app.join_chat(chat_id)
+                return await self.app.send_message(chat_id, text)
+            else:
+                raise
 
 
 async def main():
@@ -62,7 +76,7 @@ def set_up_clients(settings):
         raise ValueError("No accounts found")
 
     accounts = AccountCollection(
-        {account: Account(fs, account) for account in distinct_account_ids},
+        {account: SenderAccount(fs, account) for account in distinct_account_ids},
         fs,
         invalid="raise",
     )
@@ -80,7 +94,7 @@ async def send_message(setting):
     if should_be_run_result:
         try:
             # Send message
-            await accounts[setting.account].app.send_message(
+            await accounts[setting.account].send_message(
                 chat_id=setting.chat_id, text=setting.text
             )
             result = "Message sent successfully"
@@ -129,6 +143,7 @@ def check_cron_tz(
 
     return check_cron(crontab, last_run_utc, now_utc)
 
+
 def get_last_successful_entry(account, chat_id):
     # Query for most recent log entry
     result = (
@@ -156,9 +171,9 @@ def add_log_entry(setting, result):
 
 async def alert(errors, fs):
     # Send alert message
-    alert_acc = Account(fs, os.environ["ALERT_ACCOUNT"])
+    alert_acc = SenderAccount(fs, os.environ["ALERT_ACCOUNT"])
     async with alert_acc.session(invalid="raise"):
-        await alert_acc.app.send_message(
+        await alert_acc.send_message(
             chat_id=os.environ["ALERT_CHAT"], text="\n".join(errors)
         )
 
