@@ -13,13 +13,16 @@ import supabase
 from flask import Flask
 from pyrogram.errors import ChatWriteForbidden
 
-from account.account import Account, AccountCollection
+from account.account import Account, AccountCollection, AccountStartFailed
 from settings import load_settings
 from supabasefs.supabasefs import SupabaseTableFileSystem
 
 
 class SenderAccount(Account):
     async def send_message(self, chat_id, text, forced_entry=True):
+        if not self.started:
+            raise RuntimeError("App is not started")
+
         try:
             return await self.app.send_message(chat_id, text)
 
@@ -33,25 +36,38 @@ class SenderAccount(Account):
 
 async def main():
     settings = load_settings()
-    set_up_clients(settings)
+    set_up_supabase()
+    set_up_accounts(settings)
+
     errors = []
 
-    async with accounts.session():
-        for setting in settings:
-            try:
-                result = (
-                    await send_message(setting) if setting.active else "Setting skipped"
-                )
-            except Exception:
-                result = f"Error: {traceback.format_exc()}"
+    try:
+        async with accounts.session():
+            for setting in settings:
+                try:
+                    result = (
+                        await send_message(setting)
+                        if setting.active
+                        else "Setting skipped"
+                    )
+                except Exception:
+                    result = f"Error: {traceback.format_exc()}"
 
-            try:
-                add_log_entry(setting, result)
-            except Exception:
-                result = f"Logging error: {traceback.format_exc()}"
+                try:
+                    add_log_entry(setting, result)
+                except Exception:
+                    result = f"Logging error: {traceback.format_exc()}"
 
-            if "error" in result.lower():
-                errors.append(f"{setting}: {result}")
+                if "error" in result.lower():
+                    errors.append(f"{setting}: {result}")
+
+    except AccountStartFailed:
+        errors.append(
+            "Не все аккаунты были привязаны.\n"
+            "Запустите https://validate-sessions.streamlit.app"
+        )
+    except Exception:
+        errors.append(f"Error: {traceback.format_exc()}")
 
     if errors:
         await alert(errors, fs)
@@ -59,16 +75,20 @@ async def main():
     print("Messages sent and logged successfully")
 
 
-def set_up_clients(settings):
-    # Set up Telegram and Supabase clients as global variables
+def set_up_supabase():
+    # Set filesystem as a global variable
 
-    global supabase_client, accounts, fs
+    global supabase_client, fs
 
     supabase_client = supabase.create_client(
         os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"]
     )
 
     fs = SupabaseTableFileSystem(supabase_client, "sessions")
+
+
+def set_up_accounts(settings):
+    global accounts
 
     distinct_account_ids = {setting.account for setting in settings}
 
@@ -172,7 +192,7 @@ def add_log_entry(setting, result):
 async def alert(errors, fs):
     # Send alert message
     alert_acc = SenderAccount(fs, os.environ["ALERT_ACCOUNT"])
-    async with alert_acc.session(invalid="raise"):
+    async with alert_acc.session(revalidate=False):
         await alert_acc.send_message(
             chat_id=os.environ["ALERT_CHAT"], text="\n".join(errors)
         )
