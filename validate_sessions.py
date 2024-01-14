@@ -1,7 +1,6 @@
 import asyncio
 import os
 
-import dotenv
 import streamlit as st
 import supabase
 
@@ -28,7 +27,9 @@ ACCEPTED = 4
 
 
 async def main():
-    dotenv.load_dotenv()
+    if "GOOGLE_SERVICE_ACCOUNT" not in os.environ:
+        import dotenv
+        dotenv.load_dotenv()
 
     st.header("Проверка аккаунтов для рассылки ОД")
 
@@ -80,7 +81,7 @@ async def check_account(fs, account):
 
 
 async def init_account(fs, account):
-    st.write(f"Попытка подключения...")
+    st.write("Попытка подключения...")
 
     acc = Account(fs, account)
 
