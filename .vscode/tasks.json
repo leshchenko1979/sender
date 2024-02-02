@@ -4,16 +4,6 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Run streamlit with current file",
-            "type": "shell",
-            "command": "streamlit run ${file}",
-            "problemMatcher": [],
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            }
-        },
-        {
             "label": "Sender: Build & upload to Yandex Cloud",
             "type": "shell",
             "command": "make_sender.bat",

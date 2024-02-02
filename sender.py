@@ -13,9 +13,9 @@ import supabase
 from flask import Flask
 from pyrogram.errors import ChatWriteForbidden
 
-from account.account import Account, AccountCollection, AccountStartFailed
+from tg.account import Account, AccountCollection, AccountStartFailed
 from settings import load_settings
-from supabasefs.supabasefs import SupabaseTableFileSystem
+from tg.supabasefs import SupabaseTableFileSystem
 
 
 class SenderAccount(Account):
