@@ -1,4 +1,0 @@
-fsspec
-pyrogram
-tgcrypto
-icontract

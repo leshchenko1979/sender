@@ -1,11 +1,11 @@
 # downgrade to python 3.11 because tgcrypto pypi distro doesn't have 3.12 images yet
-FROM python:3.11.7-slim-bullseye
+FROM python:3.11-slim
 
 LABEL Name=sender Version=0.0.1
 
-RUN pip install -U --no-cache wheel setuptools pip
+# RUN pip install -U --no-cache wheel setuptools pip
 
-ADD /account /account
+ADD /tg /tg
 ADD /supabasefs /supabasefs
 ADD /sender_requirements.txt /
 

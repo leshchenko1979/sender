@@ -3,5 +3,5 @@ gspread
 python-dotenv
 flask
 pydantic
--r account/requirements.txt
--r supabasefs/requirements.txt
+-r tg/account/requirements.txt
+-r tg/supabasefs/requirements.txt
