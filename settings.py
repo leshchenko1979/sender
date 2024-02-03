@@ -1,9 +1,13 @@
 import json
 import os
+from datetime import timezone as tz
+from zoneinfo import ZoneInfo
 
+import croniter
 import gspread
-from icontract import ensure
 import pydantic
+from icontract import ensure
+from datetime import datetime
 
 
 class Setting(pydantic.BaseModel):
@@ -36,6 +40,35 @@ class Setting(pydantic.BaseModel):
             raise ValueError("Phone number must be 11 digits long")
 
         return v
+
+    def should_be_run(self, last_run) -> bool:
+        # Check if the setting should be processed
+        return self.active and check_cron_tz(
+            self.schedule, ZoneInfo("Europe/Moscow"), last_run, datetime.now(tz=tz.utc)
+        )
+
+
+def check_cron(crontab: str, last_run: datetime, now: datetime) -> bool:
+    # Return True if, according to the crontab, there should have been
+    # another run between the last run and now
+    cron = croniter.croniter(crontab, last_run)
+    next_run = cron.get_next(datetime)
+    return next_run <= now
+
+
+def check_cron_tz(
+    crontab: str, crontab_tz: ZoneInfo, last_run: datetime, now: datetime
+) -> bool:
+    """Return True if, according to the crontab, there should have been
+    another run between the last run and now.
+
+    Crontab is in another timezone indicated by crontab_tz.
+    """
+
+    last_run_utc = last_run.astimezone(crontab_tz).replace(tzinfo=None)
+    now_utc = now.astimezone(crontab_tz).replace(tzinfo=None)
+
+    return check_cron(crontab, last_run_utc, now_utc)
 
 
 def load_settings() -> list[Setting]:

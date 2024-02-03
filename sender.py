@@ -3,19 +3,17 @@ import datetime
 import os
 import traceback
 from datetime import datetime
-from datetime import timezone as tz
-from zoneinfo import ZoneInfo
 
-import croniter
 import dotenv
 import pyrogram
 import supabase
 from flask import Flask
 from pyrogram.errors import ChatWriteForbidden
 
+from settings import Setting, load_settings
 from tg.account import Account, AccountCollection, AccountStartFailed
-from settings import load_settings
 from tg.supabasefs import SupabaseTableFileSystem
+from tg.utils import parse_telegram_message_url
 
 
 class SenderAccount(Account):
@@ -36,22 +34,27 @@ class SenderAccount(Account):
 
 async def main():
     settings = load_settings()
-    set_up_supabase()
-    set_up_accounts(settings)
+    fs = set_up_supabase()
+    accounts = set_up_accounts(fs, settings)
 
     errors = []
 
     try:
         async with accounts.session():
             for setting in settings:
-                try:
-                    result = (
-                        await send_message(setting)
-                        if setting.active
-                        else "Setting skipped"
-                    )
-                except Exception:
-                    result = f"Error: {traceback.format_exc()}"
+                if setting.active:
+                    try:
+                        last_successful_entry = get_last_successful_entry(
+                            setting.account, setting.chat_id
+                        )
+                        result = await process_setting(
+                            setting, accounts, last_successful_entry
+                        )
+
+                    except Exception:
+                        result = f"Error: {traceback.format_exc()}"
+                else:
+                    result = "Setting skipped"
 
                 try:
                     add_log_entry(setting, result)
@@ -63,8 +66,7 @@ async def main():
 
     except AccountStartFailed:
         errors.append(
-            "Не все аккаунты были привязаны.\n"
-            "Запустите https://drive.google.com/file/d/1zOL5rUO1XRteO_xK1ue16UpiJiv1LTEC/view?usp=sharing"
+            "Не все аккаунты были привязаны.\n" "Запустите привязку аккаунтов."
         )
     except Exception:
         errors.append(f"Error: {traceback.format_exc()}")
@@ -76,92 +78,95 @@ async def main():
 
 
 def set_up_supabase():
-    # Set filesystem as a global variable
 
-    global supabase_client, fs
+    global supabase_client
 
     supabase_client = supabase.create_client(
         os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"]
     )
 
-    fs = SupabaseTableFileSystem(supabase_client, "sessions")
+    return SupabaseTableFileSystem(supabase_client, "sessions")
 
 
-def set_up_accounts(settings):
-    global accounts
-
+def set_up_accounts(fs, settings):
     distinct_account_ids = {setting.account for setting in settings}
 
     if not distinct_account_ids:
         raise ValueError("No accounts found")
 
-    accounts = AccountCollection(
+    return AccountCollection(
         {account: SenderAccount(fs, account) for account in distinct_account_ids},
         fs,
         invalid="raise",
     )
 
 
-async def send_message(setting):
+async def process_setting(setting: Setting, accounts: AccountCollection):
     # Load most recent log entry
     log_entry = get_last_successful_entry(setting.account, setting.chat_id)
 
-    try:
-        should_be_run_result = should_be_run(setting, log_entry)
-    except Exception as e:
-        return f"Error: Could not figure out the crontab setting: {str(e)}"
-
-    if should_be_run_result:
-        try:
-            # Send message
-            await accounts[setting.account].send_message(
-                chat_id=setting.chat_id, text=setting.text
-            )
-            result = "Message sent successfully"
-
-        except pyrogram.errors.RPCError as e:
-            result = f"Error sending message: {e}"
-
+    if not log_entry:
+        should_be_run = True
     else:
-        result = "Message already sent recently"
+        last_time_sent = datetime.fromisoformat(log_entry["datetime"])
+        try:
+            should_be_run = setting.should_be_run(last_time_sent)
+        except Exception as e:
+            return f"Error: Could not figure out the crontab setting: {str(e)}"
+
+    if not should_be_run:
+        return "Message already sent recently"
+
+    # check if setting.text is a valid url like https://t.me/od_sender_alerts/43
+    # if it is, retrieve the message_id this url refers to
+
+    try:
+        from_chat_id, message_id = parse_telegram_message_url(setting.text)
+        forward_needed = True
+    except Exception:  # not a valid telegram url
+        forward_needed = False
+
+    app = accounts[setting.account]
+
+    return (
+        await forward_message(app, setting, from_chat_id, message_id)
+        if forward_needed
+        else await send_text_message(app, setting)
+    )
+
+
+async def send_text_message(app: pyrogram.client.Client, setting: Setting):
+    try:
+        # Send text message
+        await app.send_message(chat_id=setting.chat_id, text=setting.text)
+        result = "Message sent successfully"
+
+    except pyrogram.errors.RPCError as e:
+        result = f"Error sending message: {e}"
 
     return result
 
 
-def should_be_run(setting, last_successful_entry):
-    # Check if the message should be sent
+async def forward_message(
+    app: pyrogram.client.Client, setting: Setting, from_chat_id, message_id
+):
+    try:
+        # Forward message hiding the sender
+        await app.invoke(
+            pyrogram.raw.functions.messages.forward_messages.ForwardMessages(
+                from_peer=await app.resolve_peer(from_chat_id),
+                id=[message_id],
+                to_peer=await app.resolve_peer(setting.chat_id),
+                drop_author=True,
+                random_id=[app.rnd_id()],
+            )
+        )
+        result = "Message forwarded successfully"
 
-    if not last_successful_entry:
-        return True
+    except pyrogram.errors.RPCError as e:
+        result = f"Error forwarding message: {e}"
 
-    return check_cron_tz(
-        setting.schedule,
-        ZoneInfo("Europe/Moscow"),
-        datetime.fromisoformat(last_successful_entry["datetime"]),
-        datetime.now(tz=tz.utc),
-    )
-
-
-def check_cron(crontab: str, last_run: datetime, now: datetime) -> bool:
-    # Return True if, according to the crontab, there should have been another run between the last run and now
-    cron = croniter.croniter(crontab, last_run)
-    next_run = cron.get_next(datetime)
-    return next_run <= now
-
-
-def check_cron_tz(
-    crontab: str, crontab_tz: ZoneInfo, last_run: datetime, now: datetime
-) -> bool:
-    """Return True if, according to the crontab, there should have been
-    another run between the last run and now.
-
-    Crontab is in another timezone indicated by crontab_tz.
-    """
-
-    last_run_utc = last_run.astimezone(crontab_tz).replace(tzinfo=None)
-    now_utc = now.astimezone(crontab_tz).replace(tzinfo=None)
-
-    return check_cron(crontab, last_run_utc, now_utc)
+    return result
 
 
 def get_last_successful_entry(account, chat_id):
