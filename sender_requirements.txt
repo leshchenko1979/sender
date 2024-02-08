@@ -3,6 +3,5 @@ gspread
 python-dotenv
 flask
 pydantic
--r tg/account/requirements.txt
--r tg/supabasefs/requirements.txt
-tg/TgCrypto-1.2.5-cp312-cp312-linux_x86_64.whl
+git+https://github.com/leshchenko1979/tg.git
+tgcrypto

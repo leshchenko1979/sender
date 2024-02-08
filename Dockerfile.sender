@@ -1,13 +1,10 @@
-FROM python:3-slim
+FROM python:3.11-alpine
 
 LABEL Name=sender Version=0.0.1
 
-# RUN pip install -U --no-cache wheel setuptools pip
+RUN apk update && apk add git
 
-ADD /tg /tg
 ADD /sender_requirements.txt /
-
-# WORKDIR /src
 
 RUN pip install -r sender_requirements.txt --no-cache
 
