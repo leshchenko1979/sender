@@ -3,17 +3,19 @@ import datetime
 import os
 import traceback
 from datetime import datetime
+from functools import cache
 
 import dotenv
 import pyrogram
 import supabase
 from flask import Flask
 from pyrogram.errors import ChatWriteForbidden
-
-from settings import Setting, load_settings
 from tg.account import Account, AccountCollection, AccountStartFailed
 from tg.supabasefs import SupabaseTableFileSystem
 from tg.utils import parse_telegram_message_url
+
+from clients import Client, load_clients
+from settings import Setting, load_settings
 
 
 class SenderAccount(Account):
@@ -33,46 +35,14 @@ class SenderAccount(Account):
 
 
 async def main():
-    settings = load_settings()
+    dotenv.load_dotenv()
     fs = set_up_supabase()
-    accounts = set_up_accounts(fs, settings)
+    clients = load_clients()
 
-    errors = []
-
-    try:
-        async with accounts.session():
-            for setting in settings:
-                if setting.active:
-                    try:
-                        last_successful_entry = get_last_successful_entry(
-                            setting.account, setting.chat_id
-                        )
-                        result = await process_setting(
-                            setting, accounts, last_successful_entry
-                        )
-
-                    except Exception:
-                        result = f"Error: {traceback.format_exc()}"
-                else:
-                    result = "Setting skipped"
-
-                try:
-                    add_log_entry(setting, result)
-                except Exception:
-                    result = f"Logging error: {traceback.format_exc()}"
-
-                if "error" in result.lower():
-                    errors.append(f"{setting}: {result}")
-
-    except AccountStartFailed:
-        errors.append(
-            "Не все аккаунты были привязаны.\n" "Запустите привязку аккаунтов."
-        )
-    except Exception:
-        errors.append(f"Error: {traceback.format_exc()}")
-
-    if errors:
-        await alert(errors, fs)
+    for client in clients:
+        print(f"Starting {client.name}")
+        await process_client(fs, client)
+        print(f"Finished {client.name}")
 
     print("Messages sent and logged successfully")
 
@@ -88,27 +58,77 @@ def set_up_supabase():
     return SupabaseTableFileSystem(supabase_client, "sessions")
 
 
-def set_up_accounts(fs, settings):
+async def process_client(fs, client: Client):
+    try:
+        errors = []
+
+        settings = load_settings(client)
+        accounts = set_up_accounts(fs, settings)
+
+        async with accounts.session():
+            for setting in settings:
+                await process_setting_outer(client.name, setting, accounts, errors)
+
+    except AccountStartFailed:
+        errors.append(
+            "Не все аккаунты были привязаны.\n" "Запустите привязку аккаунтов."
+        )
+    except Exception:
+        errors.append(f"Error: {traceback.format_exc()}")
+
+    if errors:
+        await alert(errors, fs, client)
+
+
+def set_up_accounts(fs, settings: list[Setting]):
     distinct_account_ids = {setting.account for setting in settings}
 
     if not distinct_account_ids:
         raise ValueError("No accounts found")
 
-    return AccountCollection(
-        {account: SenderAccount(fs, account) for account in distinct_account_ids},
-        fs,
-        invalid="raise",
-    )
+    collection = get_account_collection_from_supabase(fs)
+
+    for account_id in distinct_account_ids:
+        if account_id not in collection.accounts:
+            collection.accounts[account_id] = SenderAccount(fs, account_id)
+
+    return collection
 
 
-async def process_setting(setting: Setting, accounts: AccountCollection):
-    # Load most recent log entry
-    log_entry = get_last_successful_entry(setting.account, setting.chat_id)
+@cache
+def get_account_collection_from_supabase(fs):
+    return AccountCollection({}, fs, invalid="raise")
 
-    if not log_entry:
+
+async def process_setting_outer(
+    client_name: str, setting: Setting, accounts: AccountCollection, errors: list[str]
+):
+    if setting.active:
+        try:
+            successful = get_last_successful_entry(setting.account, setting.chat_id)
+            result = await process_setting(setting, accounts, successful)
+
+        except Exception:
+            result = f"Error: {traceback.format_exc()}"
+    else:
+        result = "Setting skipped"
+
+    try:
+        add_log_entry(client_name, setting, result)
+    except Exception:
+        result = f"Logging error: {traceback.format_exc()}"
+
+    if "error" in result.lower():
+        errors.append(f"{setting}: {result}")
+
+
+async def process_setting(
+    setting: Setting, accounts: AccountCollection, last_successful_entry
+):
+    if not last_successful_entry:
         should_be_run = True
     else:
-        last_time_sent = datetime.fromisoformat(log_entry["datetime"])
+        last_time_sent = datetime.fromisoformat(last_successful_entry["datetime"])
         try:
             should_be_run = setting.should_be_run(last_time_sent)
         except Exception as e:
@@ -116,9 +136,6 @@ async def process_setting(setting: Setting, accounts: AccountCollection):
 
     if not should_be_run:
         return "Message already sent recently"
-
-    # check if setting.text is a valid url like https://t.me/od_sender_alerts/43
-    # if it is, retrieve the message_id this url refers to
 
     try:
         from_chat_id, message_id = parse_telegram_message_url(setting.text)
@@ -173,7 +190,7 @@ def get_last_successful_entry(account, chat_id):
     # Query for most recent log entry
     result = (
         supabase_client.table("log_entries")
-        .select("*")
+        .select("datetime")
         .eq("account", account)
         .eq("chat_id", chat_id)
         .like("result", "%successfully%")
@@ -185,22 +202,25 @@ def get_last_successful_entry(account, chat_id):
     return result.data[0] if result.data else None
 
 
-def add_log_entry(setting, result):
+def add_log_entry(client_name, setting, result):
     # Add log entry
     supabase_client.table("log_entries").insert(
-        {"account": setting.account, "chat_id": setting.chat_id, "result": result}
+        {
+            "client_name": client_name,
+            "account": setting.account,
+            "chat_id": setting.chat_id,
+            "result": result,
+        }
     ).execute()
 
     return
 
 
-async def alert(errors, fs):
+async def alert(errors, fs, client: Client):
     # Send alert message
-    alert_acc = SenderAccount(fs, os.environ["ALERT_ACCOUNT"])
+    alert_acc = SenderAccount(fs, client.alert_account)
     async with alert_acc.session(revalidate=False):
-        await alert_acc.send_message(
-            chat_id=os.environ["ALERT_CHAT"], text="\n".join(errors)
-        )
+        await alert_acc.send_message(chat_id=client.alert_chat, text="\n".join(errors))
 
 
 app = Flask(__name__)
@@ -208,11 +228,9 @@ app = Flask(__name__)
 
 @app.route("/")
 def handler():
-    dotenv.load_dotenv()
     asyncio.run(main())
     return "OK"
 
 
 if __name__ == "__main__":
-    dotenv.load_dotenv()
     asyncio.run(main())

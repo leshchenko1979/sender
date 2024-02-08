@@ -9,8 +9,12 @@ ADD /sender_requirements.txt /
 RUN pip install -r sender_requirements.txt --no-cache
 
 ADD /.env /
+
+ADD /clients.py /
 ADD /settings.py /
 ADD /sender.py /
+
+ADD clients.yaml
 
 EXPOSE 5000:8080
 

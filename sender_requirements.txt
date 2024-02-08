@@ -5,3 +5,4 @@ flask
 pydantic
 git+https://github.com/leshchenko1979/tg.git
 tgcrypto
+pyyaml

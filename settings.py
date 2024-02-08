@@ -1,13 +1,16 @@
 import json
 import os
+from datetime import datetime
 from datetime import timezone as tz
+from functools import cache
 from zoneinfo import ZoneInfo
 
 import croniter
 import gspread
 import pydantic
 from icontract import ensure
-from datetime import datetime
+
+from clients import Client
 
 
 class Setting(pydantic.BaseModel):
@@ -71,19 +74,22 @@ def check_cron_tz(
     return check_cron(crontab, last_run_utc, now_utc)
 
 
-def load_settings() -> list[Setting]:
-    settings = load_from_gsheets()
+def load_settings(client: Client) -> list[Setting]:
+    settings = load_from_gsheets(client.spreadsheet_url)
     fields = list(Setting.model_fields.keys())
     return [Setting(**dict(zip(fields, row))) for row in settings[1:]]
 
 
 @ensure(lambda result: result, "No settings found")
-def load_from_gsheets():
-    service_string = os.environ["GOOGLE_SERVICE_ACCOUNT"]
-    service_dict = json.loads(service_string)
-    gc = gspread.service_account_from_dict(service_dict)
-
-    sheet = gc.open_by_url(os.environ["SPREADSHEET_URL"])
+def load_from_gsheets(spreadsheet_url):
+    sheet = get_google_client().open_by_url(spreadsheet_url)
     worksheet = sheet.get_worksheet(0)
 
     return worksheet.get_all_values()
+
+
+@cache
+def get_google_client():
+    service_string = os.environ["GOOGLE_SERVICE_ACCOUNT"]
+    service_dict = json.loads(service_string)
+    return gspread.service_account_from_dict(service_dict)
