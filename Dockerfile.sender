@@ -10,11 +10,12 @@ RUN pip install -r sender_requirements.txt --no-cache
 
 ADD /.env /
 
+ADD /yandex_logging.py /
 ADD /clients.py /
 ADD /settings.py /
 ADD /sender.py /
 
-ADD clients.yaml
+ADD clients.yaml /
 
 EXPOSE 5000:8080
 

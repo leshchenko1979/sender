@@ -16,6 +16,9 @@ from tg.utils import parse_telegram_message_url
 
 from clients import Client, load_clients
 from settings import Setting, load_settings
+from yandex_logging import init_logging
+
+logger = init_logging(__name__)
 
 
 class SenderAccount(Account):
@@ -40,11 +43,11 @@ async def main():
     clients = load_clients()
 
     for client in clients:
-        print(f"Starting {client.name}")
+        logger.info(f"Starting {client.name}")
         await process_client(fs, client)
-        print(f"Finished {client.name}")
+        logger.info(f"Finished {client.name}")
 
-    print("Messages sent and logged successfully")
+    logger.info("Messages sent and logged successfully")
 
 
 def set_up_supabase():
@@ -199,18 +202,18 @@ def get_last_successful_entry(account, chat_id):
     return result.data[0] if result.data else None
 
 
-def add_log_entry(client_name, setting, result):
+def add_log_entry(client_name: str, setting: Setting, result: str):
     # Add log entry
-    supabase_client.table("log_entries").insert(
-        {
-            "client_name": client_name,
-            "account": setting.account,
-            "chat_id": setting.chat_id,
-            "result": result,
-        }
-    ).execute()
+    entry = {
+        "client_name": client_name,
+        "account": setting.account,
+        "chat_id": setting.chat_id,
+        "result": result,
+    }
 
-    return
+    supabase_client.table("log_entries").insert(entry).execute()
+
+    logger.info(f"Logged {entry}", extra=entry)
 
 
 async def alert(errors, fs, client: Client):
@@ -218,6 +221,8 @@ async def alert(errors, fs, client: Client):
     alert_acc = SenderAccount(fs, client.alert_account)
     async with alert_acc.session(revalidate=False):
         await alert_acc.send_message(chat_id=client.alert_chat, text="\n".join(errors))
+
+    logger.warning("Alert message sent", extra={"errors": errors})
 
 
 app = Flask(__name__)

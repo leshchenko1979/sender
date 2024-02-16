@@ -57,7 +57,7 @@ def test_load_settings(mock_load_from_gsheets):
     ]
 
     # Act
-    settings = load_settings()
+    settings = load_settings("abc")
 
     # Assert
     assert len(settings) == 2
@@ -83,7 +83,7 @@ def test_load_from_gsheets(mock_service_account_from_dict):
     ]
 
     # Act
-    result = load_from_gsheets()
+    result = load_from_gsheets("abc")
 
     # Assert
     assert mock_service_account_from_dict.called
@@ -110,4 +110,4 @@ def test_load_from_gsheets_no_settings_found(mock_service_account_from_dict):
 
     # Act & Assert
     with pytest.raises(AssertionError):
-        load_from_gsheets()
+        load_from_gsheets("abc")
