@@ -143,7 +143,7 @@ async def process_setting(
     except Exception:  # not a valid telegram url
         forward_needed = False
 
-    app = accounts[setting.account]
+    app = accounts[setting.account].app
 
     return (
         await forward_message(app, setting, from_chat_id, message_id)
