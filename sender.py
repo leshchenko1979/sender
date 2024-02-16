@@ -81,10 +81,7 @@ async def process_client(fs, client: Client):
 
 
 def set_up_accounts(fs, settings: list[Setting]):
-    distinct_account_ids = {setting.account for setting in settings}
-
-    if not distinct_account_ids:
-        raise ValueError("No accounts found")
+    distinct_account_ids = {setting.account for setting in settings if setting.active}
 
     collection = get_account_collection_from_supabase(fs)
 
