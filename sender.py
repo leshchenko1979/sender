@@ -6,6 +6,7 @@ from datetime import datetime
 from functools import cache
 
 import dotenv
+import more_itertools
 import pyrogram
 import supabase
 from flask import Flask
@@ -66,11 +67,14 @@ async def process_client(fs, client: Client):
         errors = []
 
         settings = load_settings(client)
-        accounts = set_up_accounts(fs, settings)
 
-        async with accounts.session():
-            for setting in settings:
-                await process_setting_outer(client.name, setting, accounts, errors)
+        if any(s.active for s in settings):
+            accounts = set_up_accounts(fs, settings)
+            async with accounts.session():
+                for setting in settings:
+                    await process_setting_outer(client.name, setting, accounts, errors)
+        else:
+            logger.warning(f"No active settings for {client.name}")
 
     except AccountStartFailed:
         errors.append(
@@ -105,7 +109,7 @@ async def process_setting_outer(
 ):
     if setting.active:
         try:
-            successful = get_last_successful_entry(setting.account, setting.chat_id)
+            successful = get_last_successful_entry(setting)
             result = await process_setting(setting, accounts, successful)
 
         except Exception:
@@ -186,13 +190,12 @@ async def forward_message(
     return result
 
 
-def get_last_successful_entry(account, chat_id):
+def get_last_successful_entry(setting: Setting):
     # Query for most recent log entry
     result = (
         supabase_client.table("log_entries")
         .select("datetime")
-        .eq("account", account)
-        .eq("chat_id", chat_id)
+        .eq("setting_unique_id", setting.get_hash())
         .like("result", "%successfully%")
         .order("datetime", desc=True)
         .limit(1)
@@ -209,6 +212,7 @@ def add_log_entry(client_name: str, setting: Setting, result: str):
         "account": setting.account,
         "chat_id": setting.chat_id,
         "result": result,
+        "setting_unique_id": setting.get_hash(),
     }
 
     supabase_client.table("log_entries").insert(entry).execute()
@@ -219,8 +223,15 @@ def add_log_entry(client_name: str, setting: Setting, result: str):
 async def alert(errors, fs, client: Client):
     # Send alert message
     alert_acc = SenderAccount(fs, client.alert_account)
+
+    shortened_errs = "\n".join(
+        err if len(err) < 200 else f"{err[:200]}..." for err in errors
+    )
+    msgs = ("".join(msg) for msg in more_itertools.batched(shortened_errs, 4096))
+
     async with alert_acc.session(revalidate=False):
-        await alert_acc.send_message(chat_id=client.alert_chat, text="\n".join(errors))
+        for msg in msgs:
+            await alert_acc.send_message(chat_id=client.alert_chat, text=msg)
 
     logger.warning("Alert message sent", extra={"errors": errors})
 

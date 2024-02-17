@@ -7,3 +7,4 @@ git+https://github.com/leshchenko1979/tg.git
 tgcrypto
 pyyaml
 python-json-logger
+more-itertools

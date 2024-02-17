@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 from datetime import datetime
@@ -49,6 +50,11 @@ class Setting(pydantic.BaseModel):
         return self.active and check_cron_tz(
             self.schedule, ZoneInfo("Europe/Moscow"), last_run, datetime.now(tz=tz.utc)
         )
+
+    def get_hash(self) -> str:
+        # Returns a 16-character hash that would be the same for the same setting
+        data = f"{self.account}_{self.chat_id}_{self.text}"
+        return hashlib.blake2b(data.encode(), digest_size=8).hexdigest()
 
 
 def check_cron(crontab: str, last_run: datetime, now: datetime) -> bool:
