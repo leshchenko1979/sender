@@ -239,7 +239,7 @@ async def alert(errors, fs, client: Client):
 app = Flask(__name__)
 
 
-@app.route("/")
+@app.route("/", methods=["GET", "POST"])
 def handler():
     asyncio.run(main())
     return "OK"
