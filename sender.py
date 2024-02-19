@@ -130,13 +130,13 @@ async def process_setting(
     setting: Setting, accounts: AccountCollection, last_successful_entry
 ):
     if not last_successful_entry:
-        should_be_run = True
-    else:
-        last_time_sent = datetime.fromisoformat(last_successful_entry["datetime"])
-        try:
-            should_be_run = setting.should_be_run(last_time_sent)
-        except Exception as e:
-            return f"Error: Could not figure out the crontab setting: {str(e)}"
+        return "Message was never sent before: logged successfully"
+
+    last_time_sent = datetime.fromisoformat(last_successful_entry["datetime"])
+    try:
+        should_be_run = setting.should_be_run(last_time_sent)
+    except Exception as e:
+        return f"Error: Could not figure out the crontab setting: {str(e)}"
 
     if not should_be_run:
         return "Message already sent recently"
