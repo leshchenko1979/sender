@@ -10,7 +10,7 @@ import more_itertools
 import pyrogram
 import supabase
 from flask import Flask
-from pyrogram.errors import ChatWriteForbidden
+from pyrogram.errors import ChatWriteForbidden, RPCError
 from tg.account import Account, AccountCollection, AccountStartFailed
 from tg.supabasefs import SupabaseTableFileSystem
 from tg.utils import parse_telegram_message_url
@@ -23,7 +23,7 @@ logger = init_logging(__name__)
 
 
 class SenderAccount(Account):
-    async def send_message(self, chat_id, text, forced_entry=True):
+    async def send_message(self, chat_id, text):
         if not self.started:
             raise RuntimeError("App is not started")
 
@@ -31,11 +31,30 @@ class SenderAccount(Account):
             return await self.app.send_message(chat_id, text)
 
         except ChatWriteForbidden:
-            if forced_entry:
-                await self.app.join_chat(chat_id)
-                return await self.app.send_message(chat_id, text)
-            else:
-                raise
+            await self.app.join_chat(chat_id)
+            return await self.app.send_message(chat_id, text)
+
+    async def forward_message(self, chat_id, from_chat_id, message_id):
+        if not self.started:
+            raise RuntimeError("App is not started")
+
+        from_peer = await self.app.resolve_peer(from_chat_id)
+        to_peer = await self.app.resolve_peer(chat_id)
+        wrapper = pyrogram.raw.functions.messages.forward_messages.ForwardMessages
+        forward_messages_query = wrapper(
+            from_peer=from_peer,
+            id=[message_id],
+            to_peer=to_peer,
+            drop_author=True,
+            random_id=[self.app.rnd_id()],
+        )
+
+        try:
+            return await self.app.invoke(forward_messages_query)
+
+        except ChatWriteForbidden:
+            await self.app.join_chat(chat_id)
+            return await self.app.invoke(forward_messages_query)
 
 
 async def main():
@@ -147,45 +166,42 @@ async def process_setting(
     except Exception:  # not a valid telegram url
         forward_needed = False
 
-    app = accounts[setting.account].app
+    acc = accounts[setting.account]
 
     return (
-        await forward_message(app, setting, from_chat_id, message_id)
+        await forward_message(acc, setting, from_chat_id, message_id)
         if forward_needed
-        else await send_text_message(app, setting)
+        else await send_text_message(acc, setting)
     )
 
 
-async def send_text_message(app: pyrogram.client.Client, setting: Setting):
+async def send_text_message(acc: SenderAccount, setting: Setting):
     try:
         # Send text message
-        await app.send_message(chat_id=setting.chat_id, text=setting.text)
+        await acc.send_message(chat_id=setting.chat_id, text=setting.text)
         result = "Message sent successfully"
 
-    except pyrogram.errors.RPCError as e:
+    except RPCError as e:
         result = f"Error sending message: {e}"
 
     return result
 
 
 async def forward_message(
-    app: pyrogram.client.Client, setting: Setting, from_chat_id, message_id
+    acc: SenderAccount, setting: Setting, from_chat_id, message_id
 ):
     try:
-        # Forward message hiding the sender
-        await app.invoke(
-            pyrogram.raw.functions.messages.forward_messages.ForwardMessages(
-                from_peer=await app.resolve_peer(from_chat_id),
-                id=[message_id],
-                to_peer=await app.resolve_peer(setting.chat_id),
-                drop_author=True,
-                random_id=[app.rnd_id()],
-            )
+        # Forward text message
+        await acc.forward_message(
+            chat_id=setting.chat_id,
+            text=setting.text,
+            from_chat_id=from_chat_id,
+            message_id=message_id,
         )
         result = "Message forwarded successfully"
 
-    except pyrogram.errors.RPCError as e:
-        result = f"Error forwarding message: {e}"
+    except RPCError as e:
+        result = f"Error sending message: {e}"
 
     return result
 
