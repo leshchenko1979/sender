@@ -58,8 +58,9 @@ class Setting(pydantic.BaseModel):
 
 
 def check_cron(crontab: str, last_run: datetime, now: datetime) -> bool:
-    # Return True if, according to the crontab, there should have been
-    # another run between the last run and now
+    """Return True if, according to the crontab, there should have been
+    another run between the last_run and now"""
+
     cron = croniter.croniter(crontab, last_run)
     next_run = cron.get_next(datetime)
     return next_run <= now
