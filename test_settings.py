@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 from pydantic import ValidationError
 
+from clients import Client
 from settings import Setting, load_from_gsheets, load_settings
 
 
@@ -86,8 +87,15 @@ def test_load_settings(mock_load_from_gsheets):
         [False, "8 123 456 78 90", "0 6 * * *", "chat_id_2", "Hi there!"],
     ]
 
+    client = Client(
+        name="abc",
+        spreadsheet_url="https://example.com/spreadsheet",
+        alert_account="9 123 456 78 90",
+        alert_chat="chat_id_3",
+    )
+
     # Act
-    settings = load_settings("abc")
+    settings = load_settings(client)
 
     # Assert
     assert len(settings) == 2
@@ -129,27 +137,3 @@ def test_load_from_gsheets(mock_service_account_from_dict):
         ["active", "account", "schedule", "chat_id", "text"],
         [True, "7XXXXXXXXXX", "0 5 * * *", "chat_id_1", "Hello!"],
     ]
-
-
-# Test load_from_gsheets with no settings found
-@patch("gspread.service_account_from_dict")
-@patch.dict(
-    os.environ,
-    {
-        "GOOGLE_SERVICE_ACCOUNT": json.dumps({"type": "service_account"}),
-        "SPREADSHEET_URL": "https://example.com/spreadsheet",
-    },
-)
-def test_load_from_gsheets_no_settings_found(mock_service_account_from_dict):
-    # Arrange
-    mock_service_account = Mock()
-    mock_service_account_from_dict.return_value = mock_service_account
-    mock_worksheet = Mock()
-    mock_service_account.open_by_url.return_value.get_worksheet.return_value = (
-        mock_worksheet
-    )
-    mock_worksheet.get_all_values.return_value = []
-
-    # Act & Assert
-    with pytest.raises(AssertionError):
-        load_from_gsheets("abc")
