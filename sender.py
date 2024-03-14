@@ -23,6 +23,9 @@ logger = init_logging(__name__)
 
 
 class SenderAccount(Account):
+    """Defines methods for sending and forwarding messages
+    with forced joining the group if the peer is not in the chat yet."""
+
     async def send_message(self, chat_id, text):
         if not self.started:
             raise RuntimeError("App is not started")
@@ -35,6 +38,10 @@ class SenderAccount(Account):
             return await self.app.send_message(chat_id, text)
 
     async def forward_message(self, chat_id, from_chat_id, message_id):
+        """Forward message from chat to chat with forced joining the group
+        if the peer is not in the group yet and omitting the info
+        about the original author."""
+
         if not self.started:
             raise RuntimeError("App is not started")
 
@@ -241,7 +248,7 @@ async def alert(errors, fs, client: Client):
     alert_acc = SenderAccount(fs, client.alert_account)
 
     shortened_errs = "\n".join(
-        err if len(err) < 200 else f"{err[:200]}..." for err in errors
+        err if len(err) < 300 else f"{err[:300]}..." for err in errors
     )
     msgs = ("".join(msg) for msg in more_itertools.batched(shortened_errs, 4096))
 
