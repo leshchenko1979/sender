@@ -35,5 +35,5 @@ class SupabaseLogHandler:
 
         self.supabase_client.table("log_entries").insert(entry).execute()
 
-        method = logger.info if "successfully" in result.lower() else logger.warning
+        method = logger.warning if "error" in result.lower() else logger.info
         method(f"Logged {entry}", extra=entry)
