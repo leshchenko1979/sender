@@ -17,6 +17,7 @@ from tg.utils import parse_telegram_message_url
 
 from clients import Client, load_clients
 from settings import Setting, load_settings
+from supabase_logs import SupabaseLogHandler
 from yandex_logging import init_logging
 
 logger = init_logging(__name__)
@@ -79,11 +80,13 @@ async def main():
 
 def set_up_supabase():
 
-    global supabase_client
+    global supabase_client, supabase_logs
 
     supabase_client = supabase.create_client(
         os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"]
     )
+
+    supabase_logs = SupabaseLogHandler(supabase_client)
 
     return SupabaseTableFileSystem(supabase_client, "sessions")
 
@@ -135,7 +138,7 @@ async def process_setting_outer(
 ):
     if setting.active:
         try:
-            successful = get_last_successful_entry(setting)
+            successful = supabase_logs.get_last_successful_entry(setting)
             result = await process_setting(setting, accounts, successful)
 
         except Exception:
@@ -144,7 +147,7 @@ async def process_setting_outer(
         result = "Setting skipped"
 
     try:
-        add_log_entry(client_name, setting, result)
+        supabase_logs.add_log_entry(client_name, setting, result)
     except Exception:
         result = f"Logging error: {traceback.format_exc()}"
 
@@ -173,75 +176,25 @@ async def process_setting(
     except Exception:  # not a valid telegram url
         forward_needed = False
 
-    acc = accounts[setting.account]
+    acc: SenderAccount = accounts[setting.account]
 
-    return (
-        await forward_message(acc, setting, from_chat_id, message_id)
-        if forward_needed
-        else await send_text_message(acc, setting)
-    )
-
-
-async def send_text_message(acc: SenderAccount, setting: Setting):
     try:
-        # Send text message
-        await acc.send_message(chat_id=setting.chat_id, text=setting.text)
-        result = "Message sent successfully"
+        if forward_needed:
+            await acc.forward_message(
+                chat_id=setting.chat_id,
+                from_chat_id=from_chat_id,
+                message_id=message_id,
+            )
+            result = "Message forwarded successfully"
+
+        else:
+            await acc.send_message(chat_id=setting.chat_id, text=setting.text)
+            result = "Message sent successfully"
 
     except RPCError as e:
         result = f"Error sending message: {e}"
 
     return result
-
-
-async def forward_message(
-    acc: SenderAccount, setting: Setting, from_chat_id, message_id
-):
-    try:
-        # Forward text message
-        await acc.forward_message(
-            chat_id=setting.chat_id,
-            text=setting.text,
-            from_chat_id=from_chat_id,
-            message_id=message_id,
-        )
-        result = "Message forwarded successfully"
-
-    except RPCError as e:
-        result = f"Error sending message: {e}"
-
-    return result
-
-
-def get_last_successful_entry(setting: Setting):
-    # Query for most recent log entry
-    result = (
-        supabase_client.table("log_entries")
-        .select("datetime")
-        .eq("setting_unique_id", setting.get_hash())
-        .like("result", "%successfully%")
-        .order("datetime", desc=True)
-        .limit(1)
-        .execute()
-    )
-
-    return result.data[0] if result.data else None
-
-
-def add_log_entry(client_name: str, setting: Setting, result: str):
-    # Add log entry
-    entry = {
-        "client_name": client_name,
-        "account": setting.account,
-        "chat_id": setting.chat_id,
-        "result": result,
-        "setting_unique_id": setting.get_hash(),
-    }
-
-    supabase_client.table("log_entries").insert(entry).execute()
-
-    logger.info(f"Logged {entry}", extra=entry)
-
 
 async def alert(errors, fs, client: Client):
     # Send alert message

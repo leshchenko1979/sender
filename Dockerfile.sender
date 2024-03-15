@@ -10,10 +10,7 @@ RUN pip install -r sender_requirements.txt --no-cache
 
 ADD /.env /
 
-ADD /yandex_logging.py /
-ADD /clients.py /
-ADD /settings.py /
-ADD /sender.py /
+ADD /yandex_logging.py /clients.py /settings.py /sender.py /supabase_logs.py /
 
 ADD clients.yaml /
 
