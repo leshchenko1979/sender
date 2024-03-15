@@ -1,9 +1,12 @@
+import datetime
 import supabase
 
 import settings
 
 from logging import getLogger
+
 logger = getLogger(__name__)
+
 
 class SupabaseLogHandler:
     def __init__(self, supabase_client: supabase.Client):
@@ -33,29 +36,41 @@ class SupabaseLogHandler:
         $$
         """
 
-        results = (
-            self.supabase_client.rpc("last_successful_entries", {"client_name": client_name})
-            .execute()
-        )
+        results = self.supabase_client.rpc(
+            "last_successful_entries", {"client_name": client_name}
+        ).execute()
 
-        self.cache = {row["setting_unique_id"]: row["datetime"] for row in results["data"]}
-
+        self.cache = {row["setting_unique_id"]: row["datetime"] for row in results.data}
 
     def get_last_successful_entry(self, setting: settings.Setting):
-        return self.cache.get(setting.get_hash())
+        """
+        Retrieves the last successful log entry based on a given setting.
+
+        Parameters:
+            self (obj): The current instance of the class.
+            setting (settings.Setting): The setting object to retrieve
+                the last successful log entry for.
+
+        Returns:
+            datetime.datetime: The datetime of the last successful entry if found, None otherwise.
+        """
+
+        result = self.cache.get(setting.get_hash())
+        if result:
+            return datetime.datetime.fromisoformat(result)
 
     def add_log_entry(self, client_name: str, setting: settings.Setting, result: str):
         # Save time by not writing `skipped` and `already sent`
-        #into the database
-        if "skipped" not in result and "already sent" not in result:
-            entry = {
-                "client_name": client_name,
-                "account": setting.account,
-                "chat_id": setting.chat_id,
-                "result": result,
-                "setting_unique_id": setting.get_hash(),
-            }
+        # into the database
+        entry = {
+            "client_name": client_name,
+            "account": setting.account,
+            "chat_id": setting.chat_id,
+            "result": result,
+            "setting_unique_id": setting.get_hash(),
+        }
 
+        if "skipped" not in result and "already sent" not in result:
             self.supabase_client.table("log_entries").insert(entry).execute()
 
         # Log errors as warnings for easier search in the log

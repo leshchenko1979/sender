@@ -162,12 +162,11 @@ async def process_setting_outer(
 
 
 async def process_setting(
-    setting: Setting, accounts: AccountCollection, last_successful_entry
+    setting: Setting, accounts: AccountCollection, last_time_sent: datetime | None
 ):
-    if not last_successful_entry:
+    if not last_time_sent:
         return "Message was never sent before: logged successfully"
 
-    last_time_sent = datetime.fromisoformat(last_successful_entry["datetime"])
     try:
         should_be_run = setting.should_be_run(last_time_sent)
     except Exception as e:
