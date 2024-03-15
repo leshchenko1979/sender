@@ -99,6 +99,8 @@ async def process_client(fs, client: Client):
 
         if any(s.active for s in settings):
             accounts = set_up_accounts(fs, settings)
+            supabase_logs.load_results_for_client(client.name)
+
             async with accounts.session():
                 await asyncio.gather(
                     *[
