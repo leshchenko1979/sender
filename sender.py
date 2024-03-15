@@ -100,8 +100,12 @@ async def process_client(fs, client: Client):
         if any(s.active for s in settings):
             accounts = set_up_accounts(fs, settings)
             async with accounts.session():
-                for setting in settings:
-                    await process_setting_outer(client.name, setting, accounts, errors)
+                await asyncio.gather(
+                    *[
+                        process_setting_outer(client.name, setting, accounts, errors)
+                        for setting in settings
+                    ]
+                )
         else:
             logger.warning(f"No active settings for {client.name}")
 
@@ -196,11 +200,12 @@ async def process_setting(
 
     return result
 
+
 async def alert(errors, fs, client: Client):
     # Send alert message
     alert_acc = SenderAccount(fs, client.alert_account)
 
-    shortened_errs = "\n".join(
+    shortened_errs = "\n\n".join(
         err if len(err) < 300 else f"{err[:300]}..." for err in errors
     )
     msgs = ("".join(msg) for msg in more_itertools.batched(shortened_errs, 4096))
