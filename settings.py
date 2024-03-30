@@ -10,6 +10,7 @@ import croniter
 import gspread
 import pydantic
 from icontract import ensure
+from reretry import retry
 
 from clients import Client
 
@@ -20,6 +21,9 @@ class Setting(pydantic.BaseModel):
     schedule: str
     chat_id: str
     text: str
+
+    def __repr__(self):
+        return f"{self.chat_id} {self.text[:100]}"
 
     @pydantic.field_validator("account")
     @classmethod
@@ -88,6 +92,7 @@ def load_settings(client: Client) -> list[Setting]:
 
 
 @ensure(lambda result: result, "No settings found")
+@retry
 def load_from_gsheets(spreadsheet_url):
     sheet = get_google_client().open_by_url(spreadsheet_url)
     worksheet = sheet.get_worksheet(0)

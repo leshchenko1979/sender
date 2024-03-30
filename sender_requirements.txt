@@ -8,3 +8,4 @@ tgcrypto
 pyyaml
 python-json-logger
 more-itertools
+reretry
