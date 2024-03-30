@@ -13,7 +13,7 @@ class SupabaseLogHandler:
     def __init__(self, supabase_client: supabase.Client):
         self.supabase_client = supabase_client
 
-    @retry
+    @retry(tries=3)
     def load_results_for_client(self, client_name: str):
         """Calls the stored function "last_successful_entries"
         that returns 1 last successful entry for each setting_unique_id for a given client
@@ -44,7 +44,7 @@ class SupabaseLogHandler:
 
         self.cache = {row["setting_unique_id"]: row["datetime"] for row in results.data}
 
-    @retry
+    @retry(tries=3)
     def get_last_successful_entry(self, setting: settings.Setting):
         """
         Retrieves the last successful log entry based on a given setting.
@@ -62,7 +62,7 @@ class SupabaseLogHandler:
         if result:
             return datetime.datetime.fromisoformat(result)
 
-    @retry
+    @retry(tries=3)
     def add_log_entry(self, client_name: str, setting: settings.Setting, result: str):
         # Save time by not writing `skipped` and `already sent`
         # into the database

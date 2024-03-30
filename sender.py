@@ -145,7 +145,9 @@ async def process_setting_outer(
     if setting.active:
         try:
             successful = supabase_logs.get_last_successful_entry(setting)
-            result = await process_setting(setting, accounts, successful)
+            result = check_setting_time(setting, successful)
+            if not result:
+                result = await send_setting(setting, accounts)
 
         except Exception:
             result = f"Error: {traceback.format_exc()}"
@@ -161,9 +163,7 @@ async def process_setting_outer(
         errors.append(f"{setting}: {result}")
 
 
-async def process_setting(
-    setting: Setting, accounts: AccountCollection, last_time_sent: datetime | None
-):
+def check_setting_time(setting: Setting, last_time_sent: datetime | None):
     if not last_time_sent:
         return "Message was never sent before: logged successfully"
 
@@ -175,6 +175,10 @@ async def process_setting(
     if not should_be_run:
         return "Message already sent recently"
 
+    return None
+
+
+async def send_setting(setting: Setting, accounts: AccountCollection):
     try:
         from_chat_id, message_id = parse_telegram_message_url(setting.text)
         forward_needed = True

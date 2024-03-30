@@ -92,7 +92,7 @@ def load_settings(client: Client) -> list[Setting]:
 
 
 @ensure(lambda result: result, "No settings found")
-@retry
+@retry(tries=3)
 def load_from_gsheets(spreadsheet_url):
     sheet = get_google_client().open_by_url(spreadsheet_url)
     worksheet = sheet.get_worksheet(0)
