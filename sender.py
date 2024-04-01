@@ -127,9 +127,15 @@ def set_up_accounts(fs, settings: list[Setting]):
 
     collection = get_account_collection_from_supabase(fs)
 
-    for account_id in distinct_account_ids:
-        if account_id not in collection.accounts:
-            collection.accounts[account_id] = SenderAccount(fs, account_id)
+    present = set(collection.accounts.keys())
+
+    # remove accounts that are no longer needed
+    for account_id in present - distinct_account_ids:
+        del collection.accounts[account_id]
+
+    # add new accounts
+    for account_id in distinct_account_ids - present:
+        collection.accounts[account_id] = SenderAccount(fs, account_id)
 
     return collection
 
