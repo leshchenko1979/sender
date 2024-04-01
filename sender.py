@@ -123,26 +123,15 @@ async def process_client(fs, client: Client):
 
 
 def set_up_accounts(fs, settings: list[Setting]):
-    distinct_account_ids = {setting.account for setting in settings if setting.active}
-
-    collection = get_account_collection_from_supabase(fs)
-
-    present = set(collection.accounts.keys())
-
-    # remove accounts that are no longer needed
-    for account_id in present - distinct_account_ids:
-        del collection.accounts[account_id]
-
-    # add new accounts
-    for account_id in distinct_account_ids - present:
-        collection.accounts[account_id] = SenderAccount(fs, account_id)
-
-    return collection
-
-
-@cache
-def get_account_collection_from_supabase(fs):
-    return AccountCollection({}, fs, invalid="raise")
+    return AccountCollection(
+        {
+            setting.account: SenderAccount(fs, setting.account)
+            for setting in settings
+            if setting.active
+        },
+        fs,
+        invalid="raise",
+    )
 
 
 async def process_setting_outer(
