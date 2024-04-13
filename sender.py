@@ -3,7 +3,6 @@ import datetime
 import os
 import traceback
 from datetime import datetime
-from functools import cache
 
 import dotenv
 import more_itertools
@@ -159,18 +158,27 @@ async def process_setting_outer(
 
 
 def check_setting_time(setting: Setting, last_time_sent: datetime | None):
+    """
+    Check the setting time to determine if a message should be sent based
+    on the last time it was sent.
+
+    Parameters:
+    - setting: Setting object to check against
+    - last_time_sent: Datetime object representing the last time the message was sent,
+        or None if never sent
+
+    Returns:
+    - str: Message indicating the result of the check, or None
+        if the message should be sent
+    """
     if not last_time_sent:
         return "Message was never sent before: logged successfully"
 
     try:
         should_be_run = setting.should_be_run(last_time_sent)
+        return None if should_be_run else "Message already sent recently"
     except Exception as e:
         return f"Error: Could not figure out the crontab setting: {str(e)}"
-
-    if not should_be_run:
-        return "Message already sent recently"
-
-    return None
 
 
 async def send_setting(setting: Setting, accounts: AccountCollection):

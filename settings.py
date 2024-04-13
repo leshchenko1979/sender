@@ -49,7 +49,7 @@ class Setting(pydantic.BaseModel):
 
         return v
 
-    def should_be_run(self, last_run) -> bool:
+    def should_be_run(self, last_run: datetime) -> bool:
         # Check if the setting should be processed
         return self.active and check_cron_tz(
             self.schedule, ZoneInfo("Europe/Moscow"), last_run, datetime.now(tz=tz.utc)
