@@ -4,6 +4,7 @@ from pythonjsonlogger import jsonlogger
 
 def init_logging(name: str, level=logging.INFO):
     # Enable logging
+    logging.basicConfig(level=level)
     logger = logging.getLogger(name)
     logging.getLogger().setLevel(level)
     root_handler = logging.getLogger().handlers[0]
