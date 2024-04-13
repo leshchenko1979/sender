@@ -6,3 +6,7 @@ pro_gab:
   spreadsheet_url: https://docs.google.com/spreadsheets/d/1m41LkP_9yCZsEzihRcabeR_KfT2swbkt8fuAiLOgaj0
   alert_chat: pro_gab_sender_alerts
   alert_account: 79852227949
+redevest:
+  spreadsheet_url: https://docs.google.com/spreadsheets/d/1VTtlrk1KHdWe2Jg0JWZfhRT9TVSsr6CV5AV34NCknKY
+  alert_chat: redevest_sender
+  alert_account: 79660075621
