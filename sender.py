@@ -110,10 +110,8 @@ async def process_client(fs, client: Client):
         else:
             logger.warning(f"No active settings for {client.name}")
 
-    except AccountStartFailed:
-        errors.append(
-            "Не все аккаунты были привязаны.\n" "Запустите привязку аккаунтов."
-        )
+    except AccountStartFailed as exc:
+        errors.append(f"Телефон {exc.phone} не был инициализирован.")
     except Exception:
         errors.append(f"Error: {traceback.format_exc()}")
 
