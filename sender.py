@@ -9,7 +9,12 @@ import more_itertools
 import pyrogram
 import supabase
 from flask import Flask
-from pyrogram.errors import ChatWriteForbidden, RPCError
+from pyrogram.errors import (
+    ChatWriteForbidden,
+    InviteRequestSent,
+    RPCError,
+    SlowmodeWait,
+)
 from tg.account import Account, AccountCollection, AccountStartFailed
 from tg.supabasefs import SupabaseTableFileSystem
 from tg.utils import parse_telegram_message_url
@@ -200,6 +205,12 @@ async def send_setting(setting: Setting, accounts: AccountCollection):
         else:
             await acc.send_message(chat_id=setting.chat_id, text=setting.text)
             result = "Message sent successfully"
+
+    except InviteRequestSent:
+        result = "Error: До сих пор не принят запрос на вступление"
+
+    except SlowmodeWait as e:
+        result = f"Error: Слишком рано отправляется (подождать {e.value} секунд)"
 
     except RPCError as e:
         result = f"Error sending message: {e}"
