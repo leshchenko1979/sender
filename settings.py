@@ -22,7 +22,7 @@ class Setting(pydantic.BaseModel):
     chat_id: str
     text: str
 
-    def __repr__(self):
+    def __str__(self):
         return f"{self.chat_id} {self.text[:100]}"
 
     @pydantic.field_validator("account")
