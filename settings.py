@@ -100,9 +100,6 @@ def load_from_gsheets(spreadsheet_url):
     return worksheet.get_all_values()
 
 def write_errors_to_settings(client: Client, errors: dict[str, str]):
-    if not errors:
-        return
-
     settings = load_settings(client)
     worksheet = get_google_client().open_by_url(client.spreadsheet_url).get_worksheet(0)
 
