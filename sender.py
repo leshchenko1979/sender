@@ -212,6 +212,9 @@ async def send_setting(setting: Setting, accounts: AccountCollection):
     except ChatWriteForbidden:
         result = "Error: Нет прав для отправки сообщения"
 
+    except ChatAdminRequired:
+        result = "Error: Это канал, а не группа"
+
     except InviteRequestSent:
         result = "Error: До сих пор не принят запрос на вступление"
 
