@@ -10,6 +10,7 @@ import pyrogram
 import supabase
 from flask import Flask
 from pyrogram.errors import (
+    ChatAdminRequired,
     ChatWriteForbidden,
     InviteRequestSent,
     RPCError,
@@ -20,7 +21,7 @@ from tg.supabasefs import SupabaseTableFileSystem
 from tg.utils import parse_telegram_message_url
 
 from clients import Client, load_clients
-from settings import Setting, load_settings
+from settings import Setting, load_settings, write_errors_to_settings
 from supabase_logs import SupabaseLogHandler
 from yandex_logging import init_logging
 
@@ -97,7 +98,7 @@ def set_up_supabase():
 
 async def process_client(fs, client: Client):
     try:
-        errors = []
+        errors = {}
 
         settings = load_settings(client)
 
@@ -116,12 +117,14 @@ async def process_client(fs, client: Client):
             logger.warning(f"No active settings for {client.name}")
 
     except AccountStartFailed as exc:
-        errors.append(f"Телефон {exc.phone} не был инициализирован.")
+        errors[""] = f"Телефон {exc.phone} не был инициализирован."
     except Exception:
-        errors.append(f"Error: {traceback.format_exc()}")
+        errors[""] = f"Error: {traceback.format_exc()}"
 
     if errors:
         await alert(errors, fs, client)
+
+    write_errors_to_settings(client, errors)
 
 
 def set_up_accounts(fs, settings: list[Setting]):
@@ -157,7 +160,7 @@ async def process_setting_outer(
         result = f"Logging error: {traceback.format_exc()}"
 
     if "error" in result.lower():
-        errors.append(f"{setting}: {result}")
+        errors[setting.get_hash()] = f"{setting}: {result}"
 
 
 def check_setting_time(setting: Setting, last_time_sent: datetime | None):
@@ -221,12 +224,12 @@ async def send_setting(setting: Setting, accounts: AccountCollection):
     return result
 
 
-async def alert(errors, fs, client: Client):
+async def alert(errors: dict, fs, client: Client):
     # Send alert message
     alert_acc = SenderAccount(fs, client.alert_account)
 
     shortened_errs = "\n\n".join(
-        err if len(err) < 300 else f"{err[:300]}..." for err in errors
+        err if len(err) < 300 else f"{err[:300]}..." for err in errors.values()
     )
     msgs = ("".join(msg) for msg in more_itertools.batched(shortened_errs, 4096))
 

@@ -99,6 +99,21 @@ def load_from_gsheets(spreadsheet_url):
 
     return worksheet.get_all_values()
 
+def write_errors_to_settings(client: Client, errors: dict[str, str]):
+    if not errors:
+        return
+
+    settings = load_settings(client)
+    worksheet = get_google_client().open_by_url(client.spreadsheet_url).get_worksheet(0)
+
+    ERROR_COL = len(Setting.model_fields.keys())
+
+    for i, row in enumerate(settings):
+        row_hash = row.get_hash()
+        if row_hash in errors:
+            worksheet.update_cell(i + 2, ERROR_COL, errors[row_hash])
+        else:
+            worksheet.update_cell(i + 2, ERROR_COL, "")
 
 @cache
 def get_google_client():
