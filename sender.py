@@ -231,14 +231,10 @@ async def alert(errors: dict, fs, client: Client):
     # Send alert message
     alert_acc = SenderAccount(fs, client.alert_account)
 
-    shortened_errs = "\n\n".join(
-        err if len(err) < 300 else f"{err[:300]}..." for err in errors.values()
-    )
-    msgs = ("".join(msg) for msg in more_itertools.batched(shortened_errs, 4096))
-
     async with alert_acc.session(revalidate=False):
-        for msg in msgs:
-            await alert_acc.send_message(chat_id=client.alert_chat, text=msg)
+        if "" in errors:
+            await alert_acc.send_message(chat_id=client.alert_chat, text=errors[""])
+        await alert_acc.send_message(chat_id=client.alert_chat, text=f"{len(errors)} ошибок в последней рассылке. См. файл с настройками для подробностей.")
 
     logger.warning("Alert message sent", extra={"errors": errors})
 
