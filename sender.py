@@ -206,6 +206,9 @@ async def send_setting(setting: Setting, accounts: AccountCollection):
             await acc.send_message(chat_id=setting.chat_id, text=setting.text)
             result = "Message sent successfully"
 
+    except ChatWriteForbidden:
+        result = "Error: Нет прав для отправки сообщения"
+
     except InviteRequestSent:
         result = "Error: До сих пор не принят запрос на вступление"
 
