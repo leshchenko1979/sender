@@ -20,7 +20,7 @@ from tg.supabasefs import SupabaseTableFileSystem
 from tg.utils import parse_telegram_message_url
 
 from clients import Client, load_clients
-from settings import Setting, load_settings, write_errors_to_settings
+from settings import Setting
 from supabase_logs import SupabaseLogHandler
 from yandex_logging import init_logging
 
@@ -233,7 +233,10 @@ async def alert(errors: dict, fs, client: Client):
     async with alert_acc.session(revalidate=False):
         if "" in errors:
             await alert_acc.send_message(chat_id=client.alert_chat, text=errors[""])
-        await alert_acc.send_message(chat_id=client.alert_chat, text=f"{len(errors)} ошибок в последней рассылке. См. файл с настройками для подробностей.")
+        await alert_acc.send_message(
+            chat_id=client.alert_chat,
+            text=f"{len(errors)} ошибок в последней рассылке. См. файл с настройками для подробностей.",
+        )
 
     logger.warning("Alert message sent", extra={"errors": errors})
 

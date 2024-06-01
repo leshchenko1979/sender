@@ -11,7 +11,7 @@ from reretry import retry
 from settings import Setting
 
 
-class Client(pydantic.BaseModel):
+class Client(pydantic.BaseModel, extra="allow"):
     name: str
     spreadsheet_url: str
     alert_chat: str
