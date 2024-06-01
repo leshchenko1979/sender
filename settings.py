@@ -103,7 +103,7 @@ def write_errors_to_settings(client: Client, errors: dict[str, str]):
     settings = load_settings(client)
     worksheet = get_google_client().open_by_url(client.spreadsheet_url).get_worksheet(0)
 
-    ERROR_COL = len(Setting.model_fields.keys())
+    ERROR_COL = len(Setting.model_fields.keys()) + 1
 
     for i, row in enumerate(settings):
         row_hash = row.get_hash()
