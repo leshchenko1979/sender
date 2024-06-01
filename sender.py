@@ -159,7 +159,7 @@ async def process_setting_outer(
         result = f"Logging error: {traceback.format_exc()}"
 
     if "error" in result.lower():
-        errors[setting.get_hash()] = f"{setting}: {result}"
+        errors[setting.get_hash()] = result
 
 
 def check_setting_time(setting: Setting, last_time_sent: datetime | None):
