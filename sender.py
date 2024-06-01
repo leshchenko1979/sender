@@ -5,7 +5,6 @@ import traceback
 from datetime import datetime
 
 import dotenv
-import more_itertools
 import pyrogram
 import supabase
 from flask import Flask
@@ -100,7 +99,7 @@ async def process_client(fs, client: Client):
     try:
         errors = {}
 
-        settings = load_settings(client)
+        settings = client.load_settings()
 
         if any(s.active for s in settings):
             accounts = set_up_accounts(fs, settings)
@@ -124,7 +123,7 @@ async def process_client(fs, client: Client):
     if errors:
         await alert(errors, fs, client)
 
-    write_errors_to_settings(client, errors)
+    client.write_errors_to_settings(errors)
 
 
 def set_up_accounts(fs, settings: list[Setting]):

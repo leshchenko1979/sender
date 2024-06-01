@@ -1,18 +1,10 @@
 import hashlib
-import json
-import os
 from datetime import datetime
 from datetime import timezone as tz
-from functools import cache
 from zoneinfo import ZoneInfo
 
 import croniter
-import gspread
 import pydantic
-from icontract import ensure
-from reretry import retry
-
-from clients import Client
 
 
 class Setting(pydantic.BaseModel):
@@ -83,37 +75,3 @@ def check_cron_tz(
     now_utc = now.astimezone(crontab_tz).replace(tzinfo=None)
 
     return check_cron(crontab, last_run_utc, now_utc)
-
-
-def load_settings(client: Client) -> list[Setting]:
-    settings = load_from_gsheets(client.spreadsheet_url)
-    fields = list(Setting.model_fields.keys())
-    return [Setting(**dict(zip(fields, row))) for row in settings[1:]]
-
-
-@ensure(lambda result: result, "No settings found")
-@retry(tries=3)
-def load_from_gsheets(spreadsheet_url):
-    sheet = get_google_client().open_by_url(spreadsheet_url)
-    worksheet = sheet.get_worksheet(0)
-
-    return worksheet.get_all_values()
-
-def write_errors_to_settings(client: Client, errors: dict[str, str]):
-    settings = load_settings(client)
-    worksheet = get_google_client().open_by_url(client.spreadsheet_url).get_worksheet(0)
-
-    ERROR_COL = len(Setting.model_fields.keys()) + 1
-
-    for i, row in enumerate(settings):
-        row_hash = row.get_hash()
-        if row_hash in errors:
-            worksheet.update_cell(i + 2, ERROR_COL, errors[row_hash])
-        else:
-            worksheet.update_cell(i + 2, ERROR_COL, "")
-
-@cache
-def get_google_client():
-    service_string = os.environ["GOOGLE_SERVICE_ACCOUNT"]
-    service_dict = json.loads(service_string)
-    return gspread.service_account_from_dict(service_dict)
