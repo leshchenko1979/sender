@@ -1,6 +1,7 @@
 import hashlib
 from datetime import datetime
 from datetime import timezone as tz
+from os import error
 from zoneinfo import ZoneInfo
 
 import croniter
@@ -13,6 +14,7 @@ class Setting(pydantic.BaseModel):
     schedule: str
     chat_id: str
     text: str
+    error: str = ""
 
     def __str__(self):
         return f"{self.chat_id} {self.text[:100]}"

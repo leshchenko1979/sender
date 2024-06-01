@@ -123,7 +123,7 @@ async def process_client(fs, client: Client):
     if errors:
         await alert(errors, fs, client)
 
-    client.write_errors_to_settings(errors)
+    client.write_errors_to_gsheets()
 
 
 def set_up_accounts(fs, settings: list[Setting]):
@@ -160,6 +160,7 @@ async def process_setting_outer(
 
     if "error" in result.lower():
         errors[setting.get_hash()] = result
+        setting.error = result
 
 
 def check_setting_time(setting: Setting, last_time_sent: datetime | None):

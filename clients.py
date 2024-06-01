@@ -23,17 +23,17 @@ class Client(pydantic.BaseModel, extra="allow"):
         self.settings = [Setting(**dict(zip(fields, row))) for row in data[1:]]
         return self.settings
 
-    def write_errors_to_settings(self, errors: dict[str, str]):
-        worksheet = get_worksheet(self.spreadsheet_url)
+    def write_errors_to_gsheets(self):
+        ERROR_COL = list(Setting.model_fields.keys()).index("error") + 1
 
-        ERROR_COL = len(Setting.model_fields.keys()) + 1
+        sheet: gspread.Worksheet = get_worksheet(self.spreadsheet_url)
 
-        for i, row in enumerate(self.settings):
-            row_hash = row.get_hash()
-            if row_hash in errors:
-                worksheet.update_cell(i + 2, ERROR_COL, errors[row_hash])
-            else:
-                worksheet.update_cell(i + 2, ERROR_COL, "")
+        cell_list = sheet.range(2, ERROR_COL, len(self.settings) + 1, ERROR_COL)
+
+        for cell, setting in zip(cell_list, self.settings):
+            cell.value = setting.error
+
+        sheet.update_cells(cell_list)
 
 
 def load_clients():
@@ -49,6 +49,7 @@ def load_clients():
 def get_worksheet(spreadsheet_url) -> gspread.Worksheet:
     sheet = get_google_client().open_by_url(spreadsheet_url)
     return sheet.get_worksheet(0)
+
 
 @cache
 @ensure(lambda result: result, "Cannot load data from Google Sheets")
