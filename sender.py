@@ -228,15 +228,28 @@ async def send_setting(setting: Setting, accounts: AccountCollection):
 
 
 async def alert(errors: dict, fs, client: Client):
-    # Send alert message
     alert_acc = SenderAccount(fs, client.alert_account)
 
     async with alert_acc.session(revalidate=False):
+        # Send common errors like no accounts started
         if "" in errors:
             await alert_acc.send_message(chat_id=client.alert_chat, text=errors[""])
+
+        # Delete last message if it contains "ошибок в последней рассылке"
+        app = alert_acc.app
+        last_msg: pyrogram.types.Message = await anext(
+            app.get_chat_history(chat_id=client.alert_chat, limit=1)
+        )
+        if "ошибок в последней рассылке" in last_msg.text:
+            await app.delete_messages(
+                chat_id=client.alert_chat, message_ids=[last_msg.id]
+            )
+
+        # Send error message
         await alert_acc.send_message(
             chat_id=client.alert_chat,
-            text=f"{len(errors)} ошибок в последней рассылке. См. файл с настройками для подробностей.",
+            text=f"{len(errors)} ошибок в последней рассылке. \n"
+            "См. файл с настройками для подробностей.",
         )
 
     logger.warning("Alert message sent", extra={"errors": errors})
