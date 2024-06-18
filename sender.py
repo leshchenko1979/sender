@@ -240,7 +240,7 @@ async def alert(errors: dict, fs, client: Client):
         last_msg: pyrogram.types.Message = await anext(
             app.get_chat_history(chat_id=client.alert_chat, limit=1)
         )
-        if "ошибок в последней рассылке" in last_msg.text:
+        if last_msg.text and "ошибок в последней рассылке" in last_msg.text:
             await app.delete_messages(
                 chat_id=client.alert_chat, message_ids=[last_msg.id]
             )
