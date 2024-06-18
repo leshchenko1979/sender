@@ -20,7 +20,13 @@ class Client(pydantic.BaseModel, extra="allow"):
     def load_settings(self) -> list[Setting]:
         data = get_worksheet(self.spreadsheet_url).get_all_values()
         fields = list(Setting.model_fields.keys())
-        self.settings = [Setting(**dict(zip(fields, row))) for row in data[1:]]
+
+        self.settings = []
+        for row in data[1:]:
+            setting = Setting(**dict(zip(fields, row)))
+            setting.error = ""
+            self.settings.append(setting)
+
         return self.settings
 
     def write_errors_to_gsheets(self):
