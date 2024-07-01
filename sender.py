@@ -10,6 +10,7 @@ import supabase
 from flask import Flask
 from pyrogram.errors import (
     ChatAdminRequired,
+    ChatSendMediaForbidden,
     ChatWriteForbidden,
     InviteRequestSent,
     RPCError,
@@ -214,6 +215,9 @@ async def send_setting(setting: Setting, accounts: AccountCollection):
 
     except ChatWriteForbidden:
         result = "Error: Нет прав для отправки сообщения"
+
+    except ChatSendMediaForbidden:
+        result = "Error: Нет прав для отправки изображений"
 
     except ChatAdminRequired:
         result = "Error: Это канал, а не группа"
