@@ -27,7 +27,19 @@ class Client(pydantic.BaseModel, extra="allow"):
             setting.error = ""
             self.settings.append(setting)
 
+        self.check_for_duplicate_chat_ids()
+
         return self.settings
+
+    def check_for_duplicate_chat_ids(self):
+        # store duplicate chat_ids in a list
+        processed = []
+        for setting in self.settings:
+            key = (setting.chat_id, setting.text)
+            if key in processed:
+                setting.error = "Error: Повторяющееся название чата и сообщение"
+            else:
+                processed.append(key)  # add to list if not duplicate
 
     def write_errors_to_gsheets(self):
         ERROR_COL = list(Setting.model_fields.keys()).index("error") + 1

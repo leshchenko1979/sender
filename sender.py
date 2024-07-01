@@ -141,7 +141,10 @@ def set_up_accounts(fs, settings: list[Setting]):
 async def process_setting_outer(
     client_name: str, setting: Setting, accounts: AccountCollection, errors: list[str]
 ):
-    if setting.active:
+    if setting.error:
+        result = setting.error
+
+    elif setting.active:
         try:
             successful = supabase_logs.get_last_successful_entry(setting)
             result = check_setting_time(setting, successful)
