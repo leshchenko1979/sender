@@ -121,8 +121,7 @@ async def process_client(fs, client: Client):
     except Exception:
         errors[""] = f"Error: {traceback.format_exc()}"
 
-    if errors:
-        await alert(errors, fs, client)
+    await publish_stats(errors, fs, client)
 
     client.write_errors_to_gsheets()
 
@@ -142,10 +141,7 @@ def set_up_accounts(fs, settings: list[Setting]):
 async def process_setting_outer(
     client_name: str, setting: Setting, accounts: AccountCollection, errors: list[str]
 ):
-    if setting.error:
-        result = setting.error
-
-    elif setting.active:
+    if setting.active:
         try:
             successful = supabase_logs.get_last_successful_entry(setting)
             result = check_setting_time(setting, successful)
@@ -157,14 +153,17 @@ async def process_setting_outer(
     else:
         result = "Setting skipped"
 
+    # add log entry
     try:
         supabase_logs.add_log_entry(client_name, setting, result)
     except Exception:
         result = f"Logging error: {traceback.format_exc()}"
 
+    # add error to error list and setting
     if "error" in result.lower():
         errors[setting.get_hash()] = result
         setting.error = result
+        setting.active = 0
 
 
 def check_setting_time(setting: Setting, last_time_sent: datetime | None):
@@ -234,7 +233,7 @@ async def send_setting(setting: Setting, accounts: AccountCollection):
     return result
 
 
-async def alert(errors: dict, fs, client: Client):
+async def publish_stats(errors: dict, fs, client: Client):
     alert_acc = SenderAccount(fs, client.alert_account)
 
     async with alert_acc.session(revalidate=False):
@@ -242,22 +241,43 @@ async def alert(errors: dict, fs, client: Client):
         if "" in errors:
             await alert_acc.send_message(chat_id=client.alert_chat, text=errors[""])
 
-        # Delete last message if it contains "ошибок в последней рассылке"
+        ALERT_HEADING = "Результаты последней рассылки:"
+
+        # Delete last message if it contains alert heading
         app = alert_acc.app
         last_msg: pyrogram.types.Message = await anext(
             app.get_chat_history(chat_id=client.alert_chat, limit=1)
         )
-        if last_msg.text and "ошибок в последней рассылке" in last_msg.text:
+        if last_msg.text and ALERT_HEADING in last_msg.text:
             await app.delete_messages(
                 chat_id=client.alert_chat, message_ids=[last_msg.id]
             )
 
-        # Send error message
-        await alert_acc.send_message(
-            chat_id=client.alert_chat,
-            text=f"{len(errors)} ошибок в последней рассылке. \n"
-            "См. файл с настройками для подробностей.",
+        # Calculate error stats from client.settings:
+        # turned off with errors, active with errors
+
+        turned_off_with_errors = len(
+            [s for s in client.settings if not s.active and s.error]
         )
+        turned_off_no_errors = len(
+            [s for s in client.settings if not s.active and s.error]
+        )
+        active_with_errors = len(
+            [s for s in client.settings if s.active and s.error]
+        )
+
+        # Send error message
+        if any(turned_off_with_errors, turned_off_no_errors, active_with_errors):
+            await alert_acc.send_message(
+                chat_id=client.alert_chat,
+                text=(
+                    f"{ALERT_HEADING}\n\n"
+                    f"{turned_off_with_errors} ошибок в отключенных рассылках.\n"
+                    f"{turned_off_no_errors} отключенных рассылок без ошибок.\n"
+                    f"{active_with_errors} ошибок в активных рассылках.\n\n"
+                    "См. файл с настройками для подробностей."
+                ),
+            )
 
     logger.warning("Alert message sent", extra={"errors": errors})
 

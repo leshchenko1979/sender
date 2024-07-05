@@ -21,11 +21,7 @@ class Client(pydantic.BaseModel, extra="allow"):
         data = get_worksheet(self.spreadsheet_url).get_all_values()
         fields = list(Setting.model_fields.keys())
 
-        self.settings = []
-        for row in data[1:]:
-            setting = Setting(**dict(zip(fields, row)))
-            setting.error = ""
-            self.settings.append(setting)
+        self.settings = [Setting(**dict(zip(fields, row))) for row in data[1:]]
 
         self.check_for_duplicate_chat_ids()
 
@@ -38,6 +34,7 @@ class Client(pydantic.BaseModel, extra="allow"):
             key = (setting.chat_id, setting.text)
             if key in processed:
                 setting.error = "Error: Повторяющееся название чата и сообщение"
+                setting.active = 0
             else:
                 processed.append(key)  # add to list if not duplicate
 
@@ -52,6 +49,12 @@ class Client(pydantic.BaseModel, extra="allow"):
             cell.value = setting.error
 
         sheet.update_cells(cell_list)
+
+        # write updated active column
+        sheet.update(
+            f"A2:A{len(self.settings) + 1}",
+            [[int(setting.active)] for setting in self.settings],
+        )
 
 
 def load_clients():
