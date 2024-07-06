@@ -262,20 +262,16 @@ async def publish_stats(errors: dict, fs, client: Client):
         turned_off_no_errors = len(
             [s for s in client.settings if not s.active and not s.error]
         )
-        active_with_errors = len(
-            [s for s in client.settings if s.active and s.error]
-        )
 
         # Send error message
-        if any([turned_off_with_errors, turned_off_no_errors, active_with_errors]):
+        if turned_off_with_errors or turned_off_no_errors:
             await alert_acc.send_message(
                 chat_id=client.alert_chat,
                 text=(
                     f"{ALERT_HEADING}\n\n"
-                    f"{turned_off_with_errors} ошибок в отключенных рассылках.\n"
-                    f"{turned_off_no_errors} отключенных рассылок без ошибок.\n"
-                    f"{active_with_errors} ошибок в активных рассылках.\n\n"
-                    f"См. файл с настройками для подробностей: {client.spreadsheet_url}."
+                    f"{turned_off_with_errors} рассылок отключены из-за ошибок. Исправьте и включите заново.\n\n"
+                    f"{turned_off_no_errors} отключенных рассылок без ошибок. Почему отключены?\n\n"
+                    f"Подробности в файле настроек: {client.spreadsheet_url}."
                 ),
             )
 
