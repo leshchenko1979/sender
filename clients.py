@@ -38,23 +38,24 @@ class Client(pydantic.BaseModel, extra="allow"):
             else:
                 processed.append(key)  # add to list if not duplicate
 
-    def write_errors_to_gsheets(self):
-        ERROR_COL = list(Setting.model_fields.keys()).index("error") + 1
+    def update_settings_in_gsheets(self, fields: list[str]):
+        """Get data from self.settings and write it to corresponding columns in Google Sheets.
+
+        Args:
+            fields (list[str]): A list of fields from Setting model to write to Google Sheets.
+        """
 
         sheet: gspread.Worksheet = get_worksheet(self.spreadsheet_url)
 
-        cell_list = sheet.range(2, ERROR_COL, len(self.settings) + 1, ERROR_COL)
+        if isinstance(fields, str):
+            fields = [fields]
 
-        for cell, setting in zip(cell_list, self.settings):
-            cell.value = setting.error
-
-        sheet.update_cells(cell_list)
-
-        # write updated active column
-        sheet.update(
-            f"A2:A{len(self.settings) + 1}",
-            [[int(setting.active)] for setting in self.settings],
-        )
+        for field in fields:
+            col_num = list(Setting.model_fields.keys()).index(field)
+            col_letter = chr(ord("A") + col_num)
+            range_str = f"{col_letter}2:{col_letter}{len(self.settings) + 1}"
+            data = [[getattr(setting, field)] for setting in self.settings]
+            sheet.update(range_str, data)
 
 
 def load_clients():

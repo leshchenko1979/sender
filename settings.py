@@ -9,7 +9,7 @@ import pydantic
 
 
 class Setting(pydantic.BaseModel):
-    active: bool
+    active: int | bool
     account: str
     schedule: str
     chat_id: str

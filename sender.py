@@ -123,7 +123,7 @@ async def process_client(fs, client: Client):
 
     await publish_stats(errors, fs, client)
 
-    client.write_errors_to_gsheets()
+    client.update_settings_in_gsheets(["active", "error"])
 
 
 def set_up_accounts(fs, settings: list[Setting]):
@@ -260,14 +260,14 @@ async def publish_stats(errors: dict, fs, client: Client):
             [s for s in client.settings if not s.active and s.error]
         )
         turned_off_no_errors = len(
-            [s for s in client.settings if not s.active and s.error]
+            [s for s in client.settings if not s.active and not s.error]
         )
         active_with_errors = len(
             [s for s in client.settings if s.active and s.error]
         )
 
         # Send error message
-        if any(turned_off_with_errors, turned_off_no_errors, active_with_errors):
+        if any([turned_off_with_errors, turned_off_no_errors, active_with_errors]):
             await alert_acc.send_message(
                 chat_id=client.alert_chat,
                 text=(
@@ -275,7 +275,7 @@ async def publish_stats(errors: dict, fs, client: Client):
                     f"{turned_off_with_errors} ошибок в отключенных рассылках.\n"
                     f"{turned_off_no_errors} отключенных рассылок без ошибок.\n"
                     f"{active_with_errors} ошибок в активных рассылках.\n\n"
-                    "См. файл с настройками для подробностей."
+                    f"См. файл с настройками для подробностей: {client.spreadsheet_url}."
                 ),
             )
 
