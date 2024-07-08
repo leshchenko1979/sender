@@ -164,6 +164,8 @@ async def process_setting_outer(
         errors[setting.get_hash()] = result
         setting.error = result
         setting.active = 0
+    else:
+        setting.error = ""
 
 
 def check_setting_time(setting: Setting, last_time_sent: datetime | None):
