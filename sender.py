@@ -164,7 +164,7 @@ async def process_setting_outer(
         errors[setting.get_hash()] = result
         setting.error = result
         setting.active = 0
-    else:
+    elif "successfully" in result.lower():
         setting.error = ""
 
 
