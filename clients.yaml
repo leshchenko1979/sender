@@ -3,7 +3,7 @@ open_development:
   alert_chat: od_sender_alerts
   alert_account: 79852227949
 pro_gab:
-  spreadsheet_url: https://docs.google.com/spreadsheets/d/1m41LkP_9yCZsEzihRcabeR_KfT2swbkt8fuAiLOgaj0
+  spreadsheet_url: https://docs.google.com/spreadsheets/d/1oikx0B4-KdP5KGBhaArR4pns0wt9PYlmYQobDRJ-KMg
   alert_chat: pro_gab_sender_alerts
   alert_account: 79852227949
 redevest:
