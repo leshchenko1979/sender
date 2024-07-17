@@ -258,26 +258,46 @@ async def publish_stats(errors: dict, fs, client: Client):
         # Calculate error stats from client.settings:
         # turned off with errors, active with errors
 
-        turned_off_with_errors = len(
-            [s for s in client.settings if not s.active and s.error]
-        )
-        turned_off_no_errors = len(
-            [s for s in client.settings if not s.active and not s.error]
-        )
+        stats_msg = prep_stats_msg(client.settings, ALERT_HEADING)
 
         # Send error message
-        if turned_off_with_errors or turned_off_no_errors:
-            await alert_acc.send_message(
-                chat_id=client.alert_chat,
-                text=(
-                    f"{ALERT_HEADING}\n\n"
-                    f"{turned_off_with_errors} рассылок отключены из-за ошибок. Исправьте и включите заново.\n\n"
-                    f"{turned_off_no_errors} отключенных рассылок без ошибок. Почему отключены?\n\n"
-                    f"Подробности в файле настроек: {client.spreadsheet_url}."
-                ),
-            )
+        if stats_msg:
+            await alert_acc.send_message(chat_id=client.alert_chat, text=stats_msg)
 
     logger.warning("Alert message sent", extra={"errors": errors})
+
+
+def prep_stats_msg(client: Client, ALERT_HEADING):
+    turned_off_with_errors = len(
+        [s for s in client.settings if not s.active and s.error]
+    )
+    turned_off_no_errors = len(
+        [s for s in client.settings if not s.active and not s.error]
+    )
+
+    if not turned_off_with_errors and not turned_off_no_errors:
+        return ""
+
+    working = len([s for s in client.settings if s.active])
+
+    text = f"{ALERT_HEADING}\n\n"
+
+    if turned_off_with_errors:
+        text += (
+            f"{turned_off_with_errors} рассылок отключены из-за ошибок. "
+            "Исправьте и включите заново.\n\n"
+        )
+
+    if turned_off_no_errors:
+        text += (
+            f"{turned_off_no_errors} отключенных рассылок без ошибок. "
+            "Почему отключены?\n\n"
+        )
+
+    text += f"{working} (из {len(client.settings)} всего) активных рассылок.\n\n"
+    text += f"Подробности в файле настроек: {client.spreadsheet_url}."
+
+    return text
 
 
 app = Flask(__name__)
