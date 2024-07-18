@@ -235,6 +235,9 @@ async def send_setting(setting: Setting, accounts: AccountCollection):
     return result
 
 
+ALERT_HEADING = "Результаты последней рассылки:"
+
+
 async def publish_stats(errors: dict, fs, client: Client):
     alert_acc = SenderAccount(fs, client.alert_account)
 
@@ -242,8 +245,6 @@ async def publish_stats(errors: dict, fs, client: Client):
         # Send common errors like no accounts started
         if "" in errors:
             await alert_acc.send_message(chat_id=client.alert_chat, text=errors[""])
-
-        ALERT_HEADING = "Результаты последней рассылки:"
 
         # Delete last message if it contains alert heading
         app = alert_acc.app
@@ -258,7 +259,7 @@ async def publish_stats(errors: dict, fs, client: Client):
         # Calculate error stats from client.settings:
         # turned off with errors, active with errors
 
-        stats_msg = prep_stats_msg(client.settings, ALERT_HEADING)
+        stats_msg = prep_stats_msg(client)
 
         # Send error message
         if stats_msg:
@@ -267,7 +268,7 @@ async def publish_stats(errors: dict, fs, client: Client):
     logger.warning("Alert message sent", extra={"errors": errors})
 
 
-def prep_stats_msg(client: Client, ALERT_HEADING):
+def prep_stats_msg(client: Client):
     turned_off_with_errors = len(
         [s for s in client.settings if not s.active and s.error]
     )
