@@ -1,21 +1,23 @@
 import asyncio
-import datetime
+import logging
 import os
+import re
 import traceback
 from datetime import datetime
 
 import dotenv
-import pyrogram
 import supabase
-from flask import Flask
-from pyrogram.errors import (
-    ChatAdminRequired,
-    ChatSendMediaForbidden,
-    ChatWriteForbidden,
-    InviteRequestSent,
+from telethon.errors import (
+    ChatAdminRequiredError,
+    ChatSendMediaForbiddenError,
+    ChatWriteForbiddenError,
+    InviteRequestSentError,
     RPCError,
-    SlowmodeWait,
+    SlowModeWaitError,
+    UsernameNotOccupiedError,
 )
+from telethon.tl.functions.channels import JoinChannelRequest
+from telethon.tl.functions.messages import ImportChatInviteRequest
 from tg.account import Account, AccountCollection, AccountStartFailed
 from tg.supabasefs import SupabaseTableFileSystem
 from tg.utils import parse_telegram_message_url
@@ -23,9 +25,10 @@ from tg.utils import parse_telegram_message_url
 from clients import Client, load_clients
 from settings import Setting
 from supabase_logs import SupabaseLogHandler
-from yandex_logging import init_logging
 
-logger = init_logging(__name__)
+# Set up standard Python logging
+logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 
 class SenderAccount(Account):
@@ -39,8 +42,9 @@ class SenderAccount(Account):
         try:
             return await self.app.send_message(chat_id, text)
 
-        except ChatWriteForbidden:
-            await self.app.join_chat(chat_id)
+        except ChatWriteForbiddenError:
+            # attempt to join and retry
+            await self._join_chat(chat_id)
             return await self.app.send_message(chat_id, text)
 
     async def forward_message(self, chat_id, from_chat_id, message_id):
@@ -51,23 +55,46 @@ class SenderAccount(Account):
         if not self.started:
             raise RuntimeError("App is not started")
 
-        from_peer = await self.app.resolve_peer(from_chat_id)
-        to_peer = await self.app.resolve_peer(chat_id)
-        wrapper = pyrogram.raw.functions.messages.forward_messages.ForwardMessages
-        forward_messages_query = wrapper(
-            from_peer=from_peer,
-            id=[message_id],
-            to_peer=to_peer,
-            drop_author=True,
-            random_id=[self.app.rnd_id()],
-        )
-
         try:
-            return await self.app.invoke(forward_messages_query)
+            # Telethon high-level API
+            return await self.app.forward_messages(
+                chat_id,
+                message_id,
+                from_chat_id,
+                drop_author=True,
+            )
 
-        except ChatWriteForbidden:
-            await self.app.join_chat(chat_id)
-            return await self.app.invoke(forward_messages_query)
+        except ChatWriteForbiddenError:
+            await self._join_chat(chat_id)
+            return await self.app.forward_messages(
+                chat_id,
+                message_id,
+                from_chat_id,
+                drop_author=True,
+            )
+
+    async def _join_chat(self, chat_id):
+        try:
+            # If chat_id is an invite link, try importing invite first
+            invite_hash = self._extract_invite_hash(str(chat_id))
+            if invite_hash:
+                try:
+                    await self.app(ImportChatInviteRequest(invite_hash))
+                    return
+                except RPCError:
+                    # fall back to channel join attempt below
+                    pass
+
+            # For public channels/supergroups this will work with username or id
+            await self.app(JoinChannelRequest(chat_id))
+        except RPCError:
+            # Silently ignore join failures; send/forward will raise clearer error
+            pass
+
+    def _extract_invite_hash(self, text: str):
+        # Supports t.me/joinchat/<hash> and t.me/+<hash>
+        m = re.search(r"t\.me/(?:joinchat/|\+)([A-Za-z0-9_-]{16,})", text)
+        return m.group(1) if m else None
 
 
 async def main():
@@ -84,7 +111,6 @@ async def main():
 
 
 def set_up_supabase():
-
     global supabase_client, supabase_logs
 
     supabase_client = supabase.create_client(
@@ -202,6 +228,9 @@ async def send_setting(setting: Setting, accounts: AccountCollection):
     acc: SenderAccount = accounts[setting.account]
 
     try:
+        # Try to join the destination chat first to reduce resolution and permission issues
+        await acc._join_chat(setting.chat_id)
+
         if forward_needed:
             await acc.forward_message(
                 chat_id=setting.chat_id,
@@ -214,20 +243,36 @@ async def send_setting(setting: Setting, accounts: AccountCollection):
             await acc.send_message(chat_id=setting.chat_id, text=setting.text)
             result = "Message sent successfully"
 
-    except ChatWriteForbidden:
+    except ChatWriteForbiddenError:
         result = "Error: Нет прав для отправки сообщения"
 
-    except ChatSendMediaForbidden:
+    except ChatSendMediaForbiddenError:
         result = "Error: Нет прав для отправки изображений"
 
-    except ChatAdminRequired:
+    except ChatAdminRequiredError:
         result = "Error: Это канал, а не группа"
 
-    except InviteRequestSent:
+    except InviteRequestSentError:
         result = "Error: До сих пор не принят запрос на вступление"
 
-    except SlowmodeWait as e:
-        result = f"Error: Слишком рано отправляется (подождать {e.value} секунд)"
+    except UsernameNotOccupiedError:
+        result = "Error: Указанное имя пользователя не существует"
+
+    except SlowModeWaitError as e:
+        # Telethon exposes .seconds on Flood/SlowMode waits; fallback to str(e)
+        seconds = getattr(e, "seconds", None)
+        wait_text = f"{seconds} секунд" if seconds is not None else str(e)
+        result = (
+            f"Error: Слишком рано отправляется (подождать {wait_text}). "
+            "Поставьте больше паузу после предыдущих отправок в расписании."
+        )
+
+    except ValueError as e:
+        # Telethon may raise ValueError("No user has \"<username>\" as username")
+        if "No user has" in str(e) and "as username" in str(e):
+            result = "Error: Указанное имя пользователя не существует"
+        else:
+            result = f"Error: {e}"
 
     except RPCError as e:
         result = f"Error sending message: {e}"
@@ -248,13 +293,11 @@ async def publish_stats(errors: dict, fs, client: Client):
 
         # Delete last message if it contains alert heading
         app = alert_acc.app
-        last_msg: pyrogram.types.Message = await anext(
-            app.get_chat_history(chat_id=client.alert_chat, limit=1)
-        )
-        if last_msg.text and ALERT_HEADING in last_msg.text:
-            await app.delete_messages(
-                chat_id=client.alert_chat, message_ids=[last_msg.id]
-            )
+        msgs = await app.get_messages(client.alert_chat, limit=1)
+        if msgs:
+            last_msg = msgs[0]
+            if getattr(last_msg, "message", None) and ALERT_HEADING in last_msg.message:
+                await app.delete_messages(client.alert_chat, [last_msg.id])
 
         # Calculate error stats from client.settings:
         # turned off with errors, active with errors
@@ -299,15 +342,6 @@ def prep_stats_msg(client: Client):
     text += f"Подробности в файле настроек: {client.spreadsheet_url}."
 
     return text
-
-
-app = Flask(__name__)
-
-
-@app.route("/", methods=["GET", "POST"])
-def handler():
-    asyncio.run(main())
-    return "OK"
 
 
 if __name__ == "__main__":
