@@ -23,6 +23,21 @@ Log entries are stored in a supabase table.
 
 Schedules use cron notation.
 
+Environment configuration (in `.env`):
+
+```
+# Preferred: path to Google service account JSON file
+GOOGLE_SERVICE_ACCOUNT_FILE=google-service-account.json
+
+# Legacy fallback: inline JSON string
+# GOOGLE_SERVICE_ACCOUNT={"type":"service_account", ...}
+
+API_ID=...
+API_HASH=...
+SUPABASE_URL=...
+SUPABASE_KEY=...
+```
+
 # Functionality
 ```mermaid
 mindmap
