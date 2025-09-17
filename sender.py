@@ -295,6 +295,11 @@ async def send_setting(setting: Setting, accounts: AccountCollection):
                 f"Error: Требуется оплата: чтобы опубликовать в этом чате, {need_text}. "
                 "Купите звезды и повторите попытку."
             )
+        elif (
+            getattr(e, "code", None) == 403
+            and "CHAT_SEND_PHOTOS_FORBIDDEN" in message_text
+        ):
+            result = "Error: Нет прав для отправки изображений в этот чат"
         else:
             result = f"Error sending message: {e}"
 
