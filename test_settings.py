@@ -1,12 +1,10 @@
-import json
-import os
 from unittest.mock import Mock, patch
 
 import pytest
 from pydantic import ValidationError
 
 from clients import Client
-from settings import Setting, load_from_gsheets, load_settings
+from settings import Setting
 
 
 class TestSettingValidation:
@@ -67,7 +65,7 @@ class TestSettingValidation:
     )
     def test_setting_account_error_cases(self, input_account):
         # Act & Assert
-        with pytest.raises(ValidationError) as exc_info:
+        with pytest.raises(ValidationError):
             Setting(
                 active=True,
                 account=input_account,
@@ -78,14 +76,16 @@ class TestSettingValidation:
 
 
 # Test load_settings
-@patch("settings.load_from_gsheets")
-def test_load_settings(mock_load_from_gsheets):
+@patch("clients.get_worksheet")
+def test_load_settings(mock_get_worksheet):
     # Arrange
-    mock_load_from_gsheets.return_value = [
+    mock_worksheet = Mock()
+    mock_worksheet.get_all_values.return_value = [
         ["active", "account", "schedule", "chat_id", "text"],
         ["1", "7 123 456 78 90", "0 5 * * *", "chat_id_1", "Hello!"],
         [False, "8 123 456 78 90", "0 6 * * *", "chat_id_2", "Hi there!"],
     ]
+    mock_get_worksheet.return_value = mock_worksheet
 
     client = Client(
         name="abc",
@@ -95,7 +95,7 @@ def test_load_settings(mock_load_from_gsheets):
     )
 
     # Act
-    settings = load_settings(client)
+    settings = client.load_settings()
 
     # Assert
     assert len(settings) == 2
@@ -104,36 +104,22 @@ def test_load_settings(mock_load_from_gsheets):
     assert settings[1].account == "71234567890"
 
 
-# Test load_from_gsheets
-@patch("gspread.service_account_from_dict")
-@patch.dict(
-    os.environ,
-    {
-        "GOOGLE_SERVICE_ACCOUNT": json.dumps({"type": "service_account"}),
-        "SPREADSHEET_URL": "https://example.com/spreadsheet",
-    },
-)
-def test_load_from_gsheets(mock_service_account_from_dict):
+# Test get_worksheet function
+@patch("clients.get_google_client")
+def test_get_worksheet(mock_get_google_client):
     # Arrange
     mock_service_account = Mock()
-    mock_service_account_from_dict.return_value = mock_service_account
+    mock_get_google_client.return_value = mock_service_account
     mock_worksheet = Mock()
     mock_service_account.open_by_url.return_value.get_worksheet.return_value = (
         mock_worksheet
     )
-    mock_worksheet.get_all_values.return_value = [
-        ["active", "account", "schedule", "chat_id", "text"],
-        [True, "7XXXXXXXXXX", "0 5 * * *", "chat_id_1", "Hello!"],
-    ]
 
     # Act
-    result = load_from_gsheets("abc")
+    from clients import get_worksheet
+
+    result = get_worksheet("https://example.com/spreadsheet")
 
     # Assert
-    assert mock_service_account_from_dict.called
     assert mock_service_account.open_by_url.called
-    assert mock_worksheet.get_all_values.called
-    assert result == [
-        ["active", "account", "schedule", "chat_id", "text"],
-        [True, "7XXXXXXXXXX", "0 5 * * *", "chat_id_1", "Hello!"],
-    ]
+    assert result == mock_worksheet
