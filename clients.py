@@ -77,6 +77,11 @@ def get_worksheet(spreadsheet_url) -> gspread.Worksheet:
 @ensure(lambda result: result, "Cannot load data from Google Sheets")
 @retry(tries=3)
 def get_google_client():
-    service_string = os.environ["GOOGLE_SERVICE_ACCOUNT"]
-    service_dict = json.loads(service_string)
+    credentials_file_path = os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE")
+    if credentials_file_path:
+        with open(credentials_file_path, "r") as credentials_file:
+            service_dict = json.load(credentials_file)
+    else:
+        service_string = os.environ["GOOGLE_SERVICE_ACCOUNT"]
+        service_dict = json.loads(service_string)
     return gspread.service_account_from_dict(service_dict)
