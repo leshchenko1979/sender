@@ -256,7 +256,7 @@ async def send_setting(setting: Setting, accounts: AccountCollection):
         result = "Error: До сих пор не принят запрос на вступление"
 
     except UsernameNotOccupiedError:
-        result = "Error: Указанное имя пользователя не существует"
+        result = "Error: Указанный чат не существует"
 
     except SlowModeWaitError as e:
         # Telethon exposes .seconds on Flood/SlowMode waits; fallback to str(e)
@@ -270,12 +270,33 @@ async def send_setting(setting: Setting, accounts: AccountCollection):
     except ValueError as e:
         # Telethon may raise ValueError("No user has \"<username>\" as username")
         if "No user has" in str(e) and "as username" in str(e):
-            result = "Error: Указанное имя пользователя не существует"
+            result = "Error: Указанный чат не существует"
         else:
             result = f"Error: {e}"
 
     except RPCError as e:
-        result = f"Error sending message: {e}"
+        # Handle cases where Telegram requires Stars to post/forward into the target chat
+        err_text = str(e)
+        message_text = getattr(e, "message", "") or err_text
+        m = re.search(r"ALLOW_PAYMENT_REQUIRED_(\\d+)", message_text)
+        if getattr(e, "code", None) == 403 and (
+            "ALLOW_PAYMENT_REQUIRED" in message_text
+            or "PAYMENT_REQUIRED" in message_text
+            or m is not None
+        ):
+            stars = m.group(1) if m else None
+            if stars == "1":
+                need_text = "нужна 1 звезда"
+            elif stars:
+                need_text = f"нужно {stars} звёзд"
+            else:
+                need_text = "нужны звёзды"
+            result = (
+                f"Error: Требуется оплата: чтобы опубликовать в этом чате, {need_text}. "
+                "Купите звезды и повторите попытку."
+            )
+        else:
+            result = f"Error sending message: {e}"
 
     return result
 
