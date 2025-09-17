@@ -1,2 +1,5 @@
 .env
+google-service-account.json
 __pycache__
+.pytest_cache
+.traycer
