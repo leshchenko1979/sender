@@ -4,10 +4,10 @@ from logging import ERROR, getLogger
 
 import supabase
 from pyrogram.errors import FloodWait, PasswordHashInvalid, PhoneCodeInvalid
-
-from . import settings as stng
 from tg.account import Account
 from tg.supabasefs import SupabaseTableFileSystem
+
+from . import settings as stng
 
 getLogger("httpx").setLevel(ERROR)
 getLogger("pyrogram").setLevel(ERROR)
@@ -50,6 +50,7 @@ async def validate_accs(settings, fs):
                 print(
                     "Слишком много неправильных попыток. Подождите {humanized_seconds(e.value).}"
                 )
+
 
 def to_phone_format(s):
     # Transform a 11-digit string to a +X (XXX) XXX-XX-XX format

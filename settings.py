@@ -1,7 +1,6 @@
 import hashlib
 from datetime import datetime
 from datetime import timezone as tz
-from os import error
 from zoneinfo import ZoneInfo
 
 import croniter
