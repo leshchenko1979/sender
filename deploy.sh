@@ -45,7 +45,7 @@ fi
 
 # Create project directory
 echo "Creating project directory..."
-ssh ${REMOTE_USER}@${REMOTE_HOST} "mkdir -p ~/sender"
+ssh ${REMOTE_USER}@${REMOTE_HOST} "mkdir -p /data/projects/sender"
 
 # Create package archive
 echo "Creating Python package archive..."
@@ -76,10 +76,10 @@ tar \
 # Copy and extract Python package
 echo "Copying and extracting Python package..."
 scp "$TEMP_DIR/sender.tar.gz" \
-    ${REMOTE_USER}@${REMOTE_HOST}:~/sender/
+    ${REMOTE_USER}@${REMOTE_HOST}:/data/projects/sender/
 
 ssh ${REMOTE_USER}@${REMOTE_HOST} \
-    "cd ~/sender && \
+    "cd /data/projects/sender && \
      tar xzf sender.tar.gz && \
      rm sender.tar.gz"
 
@@ -87,12 +87,12 @@ rm -rf "$TEMP_DIR"
 
 # Ensure wrapper is executable on VDS
 echo "Ensuring wrapper permissions..."
-ssh ${REMOTE_USER}@${REMOTE_HOST} "chmod +x ~/sender/run.sh"
+ssh ${REMOTE_USER}@${REMOTE_HOST} "chmod +x /data/projects/sender/run.sh"
 
 # Build Docker image
 echo "Building Docker image..."
 ssh ${REMOTE_USER}@${REMOTE_HOST} '
-    cd ~/sender
+    cd /data/projects/sender
     # Stop and remove any existing containers in a single atomic operation
     containers=$(docker ps -aq --filter ancestor=sender)
     if [ ! -z "$containers" ]; then
@@ -110,7 +110,7 @@ ssh ${REMOTE_USER}@${REMOTE_HOST} '
     # Get current crontab without sender jobs and without any existing CRON_TZ lines
     TEMP_CRONTAB=$(crontab -l 2>/dev/null | grep -v "sender" | grep -v -E "^CRON_TZ=" || true)
     CRON_TZ_LINE="CRON_TZ=Europe/Moscow"
-    CRON_LINE="0 9-21 * * * bash -lc \"cd ~/sender && ./run.sh\""
+    CRON_LINE="0 9-21 * * * bash -lc \"cd /data/projects/sender && ./run.sh\""
 
     { 
         echo "$TEMP_CRONTAB"
