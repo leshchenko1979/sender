@@ -3,3 +3,7 @@ google-service-account.json
 __pycache__
 .pytest_cache
 .traycer
+
+# macOS resource forks
+._*
+.DS_Store
