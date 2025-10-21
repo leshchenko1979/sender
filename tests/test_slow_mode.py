@@ -233,3 +233,4 @@ class TestEdgeCases:
 
         # Should round up to 1 hour minimum
         assert "every 1 hours" in result
+
