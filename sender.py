@@ -336,6 +336,9 @@ def handle_slow_mode_error(client: Client, setting: Setting, wait_seconds: int) 
         Result message describing the changes made
     """
     # Step 1: Calculate required interval (round up to hours)
+    # Handle edge cases where wait_seconds is 0 or negative
+    if wait_seconds <= 0:
+        wait_seconds = 3600  # Default to 1 hour minimum
     required_hours = ceil((wait_seconds * 1.2) / 3600)  # 20% buffer
 
     # Step 2: Find all active settings for same chat
