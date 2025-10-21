@@ -47,23 +47,16 @@ async def validate_accs(settings, fs):
             except (PasswordHashInvalid, PhoneCodeInvalid):
                 print("Некорректно")
             except FloodWait as e:
+                from cron_utils import humanize_seconds
+
                 print(
-                    "Слишком много неправильных попыток. Подождите {humanized_seconds(e.value).}"
+                    f"Слишком много неправильных попыток. Подождите {humanize_seconds(e.value)}"
                 )
 
 
 def to_phone_format(s):
     # Transform a 11-digit string to a +X (XXX) XXX-XX-XX format
     return f"+{s[:1]} ({s[1:4]}) {s[4:7]}-{s[7:9]}-{s[9:]}"
-
-
-def humanized_seconds(seconds: int) -> str:
-    if seconds < 60:
-        return f"{seconds} секунд"
-    elif seconds < 3600:
-        return f"{seconds // 60} минут"
-    else:
-        return f"{seconds // 3600} часов"
 
 
 if __name__ == "__main__":

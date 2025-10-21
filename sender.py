@@ -4,6 +4,7 @@ import os
 import re
 import traceback
 from datetime import datetime
+from math import ceil
 
 import dotenv
 import supabase
@@ -23,6 +24,7 @@ from tg.supabasefs import SupabaseTableFileSystem
 from tg.utils import parse_telegram_message_url
 
 from clients import Client, load_clients
+from cron_utils import adjust_cron_interval, format_schedule_change_message
 from settings import Setting
 from supabase_logs import SupabaseLogHandler
 
@@ -135,7 +137,9 @@ async def process_client(fs, client: Client):
             async with accounts.session():
                 await asyncio.gather(
                     *[
-                        process_setting_outer(client.name, setting, accounts, errors)
+                        process_setting_outer(
+                            client.name, setting, accounts, errors, client
+                        )
                         for setting in settings
                     ]
                 )
@@ -165,14 +169,18 @@ def set_up_accounts(fs, settings: list[Setting]):
 
 
 async def process_setting_outer(
-    client_name: str, setting: Setting, accounts: AccountCollection, errors: list[str]
+    client_name: str,
+    setting: Setting,
+    accounts: AccountCollection,
+    errors: list[str],
+    client: Client = None,
 ):
     if setting.active:
         try:
             successful = supabase_logs.get_last_successful_entry(setting)
             result = check_setting_time(setting, successful)
             if not result:
-                result = await send_setting(setting, accounts)
+                result = await send_setting(setting, accounts, client)
 
         except Exception:
             result = f"Error: {traceback.format_exc()}"
@@ -218,7 +226,9 @@ def check_setting_time(setting: Setting, last_time_sent: datetime | None):
         return f"Error: Could not figure out the crontab setting: {str(e)}"
 
 
-async def send_setting(setting: Setting, accounts: AccountCollection):
+async def send_setting(
+    setting: Setting, accounts: AccountCollection, client: Client = None
+):
     try:
         from_chat_id, message_id = parse_telegram_message_url(setting.text)
         forward_needed = True
@@ -261,11 +271,18 @@ async def send_setting(setting: Setting, accounts: AccountCollection):
     except SlowModeWaitError as e:
         # Telethon exposes .seconds on Flood/SlowMode waits; fallback to str(e)
         seconds = getattr(e, "seconds", None)
-        wait_text = f"{seconds} секунд" if seconds is not None else str(e)
-        result = (
-            f"Error: Слишком рано отправляется (подождать {wait_text}). "
-            "Поставьте больше паузу после предыдущих отправок в расписании."
-        )
+        if seconds is not None and client is not None:
+            # Auto-adjust schedule for all settings in this chat
+            result = handle_slow_mode_error(client, setting, seconds)
+        else:
+            # Fallback to old behavior if we can't extract seconds or client not available
+            from cron_utils import humanize_seconds
+
+            wait_text = humanize_seconds(seconds) if seconds is not None else str(e)
+            result = (
+                f"Error: Слишком рано отправляется (подождать {wait_text}). "
+                "Поставьте больше паузу после предыдущих отправок в расписании."
+            )
 
     except ValueError as e:
         # Telethon may raise ValueError("No user has \"<username>\" as username")
@@ -304,6 +321,55 @@ async def send_setting(setting: Setting, accounts: AccountCollection):
             result = f"Error sending message: {e}"
 
     return result
+
+
+def handle_slow_mode_error(client: Client, setting: Setting, wait_seconds: int) -> str:
+    """
+    Handle SlowModeWaitError by adjusting schedules for all settings targeting the same chat.
+
+    Args:
+        client: Client containing all settings
+        setting: The setting that triggered the slow mode error
+        wait_seconds: Number of seconds to wait before next message
+
+    Returns:
+        Result message describing the changes made
+    """
+    # Step 1: Calculate required interval (round up to hours)
+    required_hours = ceil((wait_seconds * 1.2) / 3600)  # 20% buffer
+
+    # Step 2: Find all active settings for same chat
+    related_settings = [
+        s for s in client.settings if s.chat_id == setting.chat_id and s.active
+    ]
+
+    if not related_settings:
+        return "No active settings found for this chat"
+
+    # Step 3: Adjust schedules for all related settings
+    updated_count = 0
+    for s in related_settings:
+        old_schedule = s.schedule
+        new_schedule = adjust_cron_interval(old_schedule, required_hours)
+
+        if new_schedule != old_schedule:
+            s.schedule = new_schedule
+            s.error = format_schedule_change_message(
+                wait_seconds,
+                old_schedule,
+                new_schedule,
+                required_hours,
+                len(related_settings),
+            )
+            updated_count += 1
+
+    # Step 4: Update Google Sheets with new schedules and errors
+    client.update_settings_in_gsheets(["schedule", "error"])
+
+    if updated_count > 0:
+        return f"Schedule auto-adjusted to every {required_hours} hours for {updated_count} settings in chat {setting.chat_id}"
+    else:
+        return f"No schedule adjustments needed - current intervals already sufficient for {len(related_settings)} settings in chat {setting.chat_id}"
 
 
 ALERT_HEADING = "Результаты последней рассылки:"

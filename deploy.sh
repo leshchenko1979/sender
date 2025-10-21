@@ -67,6 +67,7 @@ tar \
     clients.yaml \
     settings.py \
     supabase_logs.py \
+    cron_utils.py \
     google-service-account.json \
     requirements.txt \
     .env \
