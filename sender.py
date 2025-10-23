@@ -49,16 +49,62 @@ class SenderAccount(Account):
             await self._join_chat(chat_id)
             return await self.app.send_message(chat_id, text)
 
-    async def forward_message(self, chat_id, from_chat_id, message_id):
-        """Forward message from chat to chat with forced joining the group
-        if the peer is not in the group yet and omitting the info
-        about the original author."""
+    async def _get_grouped_message_ids(self, from_chat_id, message_id, grouped_id):
+        """Retrieve all message IDs in a media group around the given message."""
+        search_window = 20  # Search 20 messages before and after
+        offsets_to_try = [message_id + search_window, message_id]
 
-        if not self.started:
-            raise RuntimeError("App is not started")
+        for offset_id in offsets_to_try:
+            grouped_messages = []
+            try:
+                async for msg in self.app.iter_messages(
+                    from_chat_id,
+                    offset_id=offset_id,
+                    limit=search_window * 2,
+                ):
+                    if hasattr(msg, "grouped_id") and msg.grouped_id == grouped_id:
+                        grouped_messages.append(msg.id)
 
-        try:
-            # Telethon high-level API
+                if grouped_messages:
+                    return grouped_messages
+            except ValueError:
+                # Try next offset if this one fails
+                continue
+
+        return []
+
+    async def _forward_grouped_or_single(self, chat_id, from_chat_id, message_id):
+        """Forward a message or entire media group if the message is part of one."""
+        # Fetch the source message to check if it's part of a media group
+        source_message = await self.app.get_messages(from_chat_id, ids=message_id)
+        if not source_message:
+            raise ValueError("Не удалось получить исходное сообщение")
+
+        # Check if this message is part of a media group
+        if (
+            hasattr(source_message, "grouped_id")
+            and source_message.grouped_id is not None
+        ):
+            # This message is part of a media group, find all messages in the group
+            grouped_messages = await self._get_grouped_message_ids(
+                from_chat_id, message_id, source_message.grouped_id
+            )
+
+            if not grouped_messages:
+                raise ValueError("Медиагруппа неполная или недоступна")
+
+            # Sort by ID to maintain order
+            grouped_messages.sort()
+
+            # Forward all messages in the media group
+            return await self.app.forward_messages(
+                chat_id,
+                grouped_messages,
+                from_chat_id,
+                drop_author=True,
+            )
+        else:
+            # Single message, forward as before
             return await self.app.forward_messages(
                 chat_id,
                 message_id,
@@ -66,13 +112,23 @@ class SenderAccount(Account):
                 drop_author=True,
             )
 
+    async def forward_message(self, chat_id, from_chat_id, message_id):
+        """Forward message from chat to chat with forced joining the group
+        if the peer is not in the group yet and omitting the info
+        about the original author. If the message is part of a media group,
+        forwards the entire group."""
+
+        if not self.started:
+            raise RuntimeError("App is not started")
+
+        try:
+            return await self._forward_grouped_or_single(
+                chat_id, from_chat_id, message_id
+            )
         except ChatWriteForbiddenError:
             await self._join_chat(chat_id)
-            return await self.app.forward_messages(
-                chat_id,
-                message_id,
-                from_chat_id,
-                drop_author=True,
+            return await self._forward_grouped_or_single(
+                chat_id, from_chat_id, message_id
             )
 
     async def _join_chat(self, chat_id):
@@ -285,8 +341,12 @@ async def send_setting(
             )
 
     except ValueError as e:
-        # Telethon may raise ValueError("No user has \"<username>\" as username")
-        if "No user has" in str(e) and "as username" in str(e):
+        # Handle media group errors and other ValueError cases
+        if "Не удалось получить исходное сообщение" in str(e):
+            result = "Error: Не удалось получить исходное сообщение"
+        elif "Медиагруппа неполная или недоступна" in str(e):
+            result = "Error: Медиагруппа неполная или недоступна"
+        elif "No user has" in str(e) and "as username" in str(e):
             result = "Error: Указанный чат не существует"
         else:
             result = f"Error: {e}"
