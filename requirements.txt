@@ -1,7 +1,7 @@
 croniter
 gspread
 python-dotenv
-pydantic>=2.12.3
+pydantic
 git+https://github.com/leshchenko1979/tg.git
 pyyaml
 more-itertools
