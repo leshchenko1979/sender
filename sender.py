@@ -28,6 +28,38 @@ from cron_utils import adjust_cron_interval, format_schedule_change_message
 from settings import Setting
 from supabase_logs import SupabaseLogHandler
 
+
+def parse_chat_and_topic(chat_id: str) -> tuple[str, int | None]:
+    """
+    Parse chat_id which may contain topic in format: chat_id/topic_id
+
+    Examples:
+        "@mychannel/123" -> ("@mychannel", 123)
+        "-1001234567890/456" -> ("-1001234567890", 456)
+        "1826486256/7832" -> ("-1001826486256", 7832)  # Auto-converts to supergroup format
+        "@mychannel" -> ("@mychannel", None)
+
+    Returns:
+        Tuple of (chat_id, topic_id or None)
+    """
+    if "/" in chat_id:
+        parts = chat_id.rsplit("/", 1)
+        try:
+            topic_id = int(parts[1])
+            chat_part = parts[0]
+
+            # Auto-convert numeric chat IDs to supergroup format if needed
+            if chat_part.isdigit() and not chat_part.startswith("-100"):
+                # Convert to supergroup format: add -100 prefix
+                chat_part = f"-100{chat_part}"
+
+            return chat_part, topic_id
+        except ValueError:
+            # Not a valid topic number, treat whole string as chat_id
+            return chat_id, None
+    return chat_id, None
+
+
 # Set up standard Python logging
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -37,17 +69,17 @@ class SenderAccount(Account):
     """Defines methods for sending and forwarding messages
     with forced joining the group if the peer is not in the chat yet."""
 
-    async def send_message(self, chat_id, text):
+    async def send_message(self, chat_id, text, reply_to_msg_id=None):
         if not self.started:
             raise RuntimeError("App is not started")
 
         try:
-            return await self.app.send_message(chat_id, text)
+            return await self.app.send_message(chat_id, text, reply_to=reply_to_msg_id)
 
         except ChatWriteForbiddenError:
             # attempt to join and retry
             await self._join_chat(chat_id)
-            return await self.app.send_message(chat_id, text)
+            return await self.app.send_message(chat_id, text, reply_to=reply_to_msg_id)
 
     async def _get_grouped_message_ids(self, from_chat_id, message_id, grouped_id):
         """Retrieve all message IDs in a media group around the given message."""
@@ -73,7 +105,9 @@ class SenderAccount(Account):
 
         return []
 
-    async def _forward_grouped_or_single(self, chat_id, from_chat_id, message_id):
+    async def _forward_grouped_or_single(
+        self, chat_id, from_chat_id, message_id, reply_to_msg_id=None
+    ):
         """Forward a message or entire media group if the message is part of one."""
         # Fetch the source message to check if it's part of a media group
         source_message = await self.app.get_messages(from_chat_id, ids=message_id)
@@ -102,6 +136,7 @@ class SenderAccount(Account):
                 grouped_messages,
                 from_chat_id,
                 drop_author=True,
+                reply_to=reply_to_msg_id,
             )
         else:
             # Single message, forward as before
@@ -110,9 +145,12 @@ class SenderAccount(Account):
                 message_id,
                 from_chat_id,
                 drop_author=True,
+                reply_to=reply_to_msg_id,
             )
 
-    async def forward_message(self, chat_id, from_chat_id, message_id):
+    async def forward_message(
+        self, chat_id, from_chat_id, message_id, reply_to_msg_id=None
+    ):
         """Forward message from chat to chat with forced joining the group
         if the peer is not in the group yet and omitting the info
         about the original author. If the message is part of a media group,
@@ -123,12 +161,12 @@ class SenderAccount(Account):
 
         try:
             return await self._forward_grouped_or_single(
-                chat_id, from_chat_id, message_id
+                chat_id, from_chat_id, message_id, reply_to_msg_id
             )
         except ChatWriteForbiddenError:
             await self._join_chat(chat_id)
             return await self._forward_grouped_or_single(
-                chat_id, from_chat_id, message_id
+                chat_id, from_chat_id, message_id, reply_to_msg_id
             )
 
     async def _join_chat(self, chat_id):
@@ -285,6 +323,9 @@ def check_setting_time(setting: Setting, last_time_sent: datetime | None):
 async def send_setting(
     setting: Setting, accounts: AccountCollection, client: Client = None
 ):
+    # Parse chat_id to extract optional topic
+    chat_id, topic_id = parse_chat_and_topic(setting.chat_id)
+
     try:
         from_chat_id, message_id = parse_telegram_message_url(setting.text)
         forward_needed = True
@@ -295,18 +336,23 @@ async def send_setting(
 
     try:
         # Try to join the destination chat first to reduce resolution and permission issues
-        await acc._join_chat(setting.chat_id)
+        await acc._join_chat(chat_id)
 
         if forward_needed:
             await acc.forward_message(
-                chat_id=setting.chat_id,
+                chat_id=chat_id,
                 from_chat_id=from_chat_id,
                 message_id=message_id,
+                reply_to_msg_id=topic_id,
             )
             result = "Message forwarded successfully"
 
         else:
-            await acc.send_message(chat_id=setting.chat_id, text=setting.text)
+            await acc.send_message(
+                chat_id=chat_id,
+                text=setting.text,
+                reply_to_msg_id=topic_id,
+            )
             result = "Message sent successfully"
 
     except ChatWriteForbiddenError:
