@@ -3,7 +3,6 @@ import logging
 import os
 import re
 import traceback
-from datetime import datetime
 from math import ceil
 
 import dotenv
@@ -18,7 +17,10 @@ from telethon.errors import (
     UsernameNotOccupiedError,
 )
 from telethon.tl.functions.channels import JoinChannelRequest
-from telethon.tl.functions.messages import ImportChatInviteRequest
+from telethon.tl.functions.messages import (
+    ForwardMessagesRequest,
+    ImportChatInviteRequest,
+)
 from tg.account import Account, AccountCollection, AccountStartFailed
 from tg.supabasefs import SupabaseTableFileSystem
 from tg.utils import parse_telegram_message_url
@@ -69,18 +71,6 @@ class SenderAccount(Account):
     """Defines methods for sending and forwarding messages
     with forced joining the group if the peer is not in the chat yet."""
 
-    async def send_message(self, chat_id, text, reply_to_msg_id=None):
-        if not self.started:
-            raise RuntimeError("App is not started")
-
-        try:
-            return await self.app.send_message(chat_id, text, reply_to=reply_to_msg_id)
-
-        except ChatWriteForbiddenError:
-            # attempt to join and retry
-            await self._join_chat(chat_id)
-            return await self.app.send_message(chat_id, text, reply_to=reply_to_msg_id)
-
     async def _get_grouped_message_ids(self, from_chat_id, message_id, grouped_id):
         """Retrieve all message IDs in a media group around the given message."""
         search_window = 20  # Search 20 messages before and after
@@ -109,65 +99,34 @@ class SenderAccount(Account):
         self, chat_id, from_chat_id, message_id, reply_to_msg_id=None
     ):
         """Forward a message or entire media group if the message is part of one."""
-        # Fetch the source message to check if it's part of a media group
         source_message = await self.app.get_messages(from_chat_id, ids=message_id)
         if not source_message:
             raise ValueError("Не удалось получить исходное сообщение")
 
-        # Check if this message is part of a media group
+        # Determine messages to forward
         if (
             hasattr(source_message, "grouped_id")
             and source_message.grouped_id is not None
         ):
-            # This message is part of a media group, find all messages in the group
             grouped_messages = await self._get_grouped_message_ids(
                 from_chat_id, message_id, source_message.grouped_id
             )
-
             if not grouped_messages:
                 raise ValueError("Медиагруппа неполная или недоступна")
-
-            # Sort by ID to maintain order
-            grouped_messages.sort()
-
-            # Forward all messages in the media group
-            return await self.app.forward_messages(
-                chat_id,
-                grouped_messages,
-                from_chat_id,
-                drop_author=True,
-                reply_to=reply_to_msg_id,
-            )
+            message_ids = sorted(grouped_messages)
         else:
-            # Single message, forward as before
-            return await self.app.forward_messages(
-                chat_id,
-                message_id,
-                from_chat_id,
+            message_ids = [message_id]
+
+        # Forward messages using MTProto ForwardMessagesRequest (supports both regular and forum topics)
+        return await self.app(
+            ForwardMessagesRequest(
+                from_peer=from_chat_id,
+                id=message_ids,
+                to_peer=chat_id,
+                top_msg_id=reply_to_msg_id,  # None for regular forwarding, topic ID for forum topics
                 drop_author=True,
-                reply_to=reply_to_msg_id,
             )
-
-    async def forward_message(
-        self, chat_id, from_chat_id, message_id, reply_to_msg_id=None
-    ):
-        """Forward message from chat to chat with forced joining the group
-        if the peer is not in the group yet and omitting the info
-        about the original author. If the message is part of a media group,
-        forwards the entire group."""
-
-        if not self.started:
-            raise RuntimeError("App is not started")
-
-        try:
-            return await self._forward_grouped_or_single(
-                chat_id, from_chat_id, message_id, reply_to_msg_id
-            )
-        except ChatWriteForbiddenError:
-            await self._join_chat(chat_id)
-            return await self._forward_grouped_or_single(
-                chat_id, from_chat_id, message_id, reply_to_msg_id
-            )
+        )
 
     async def _join_chat(self, chat_id):
         try:
@@ -272,7 +231,18 @@ async def process_setting_outer(
     if setting.active:
         try:
             successful = supabase_logs.get_last_successful_entry(setting)
-            result = check_setting_time(setting, successful)
+            # Check the setting time to determine if a message should be sent based
+            # on the last time it was sent.
+            if not successful:
+                result = "Message was never sent before: logged successfully"
+            else:
+                try:
+                    should_be_run = setting.should_be_run(successful)
+                    result = None if should_be_run else "Message already sent recently"
+                except Exception as e:
+                    result = (
+                        f"Error: Could not figure out the crontab setting: {str(e)}"
+                    )
             if not result:
                 result = await send_setting(setting, accounts, client)
 
@@ -296,30 +266,6 @@ async def process_setting_outer(
         setting.error = ""
 
 
-def check_setting_time(setting: Setting, last_time_sent: datetime | None):
-    """
-    Check the setting time to determine if a message should be sent based
-    on the last time it was sent.
-
-    Parameters:
-    - setting: Setting object to check against
-    - last_time_sent: Datetime object representing the last time the message was sent,
-        or None if never sent
-
-    Returns:
-    - str: Message indicating the result of the check, or None
-        if the message should be sent
-    """
-    if not last_time_sent:
-        return "Message was never sent before: logged successfully"
-
-    try:
-        should_be_run = setting.should_be_run(last_time_sent)
-        return None if should_be_run else "Message already sent recently"
-    except Exception as e:
-        return f"Error: Could not figure out the crontab setting: {str(e)}"
-
-
 async def send_setting(
     setting: Setting, accounts: AccountCollection, client: Client = None
 ):
@@ -339,7 +285,7 @@ async def send_setting(
         await acc._join_chat(chat_id)
 
         if forward_needed:
-            await acc.forward_message(
+            await acc._forward_grouped_or_single(
                 chat_id=chat_id,
                 from_chat_id=from_chat_id,
                 message_id=message_id,
@@ -348,10 +294,10 @@ async def send_setting(
             result = "Message forwarded successfully"
 
         else:
-            await acc.send_message(
+            await acc.app.send_message(
                 chat_id=chat_id,
                 text=setting.text,
-                reply_to_msg_id=topic_id,
+                reply_to=topic_id,
             )
             result = "Message sent successfully"
 
@@ -490,7 +436,7 @@ async def publish_stats(errors: dict, fs, client: Client):
     async with alert_acc.session(revalidate=False):
         # Send common errors like no accounts started
         if "" in errors:
-            await alert_acc.send_message(chat_id=client.alert_chat, text=errors[""])
+            await alert_acc.app.send_message(chat_id=client.alert_chat, text=errors[""])
 
         # Delete last message if it contains alert heading
         app = alert_acc.app
@@ -502,47 +448,44 @@ async def publish_stats(errors: dict, fs, client: Client):
 
         # Calculate error stats from client.settings:
         # turned off with errors, active with errors
+        turned_off_with_errors = len(
+            [s for s in client.settings if not s.active and s.error]
+        )
+        turned_off_no_errors = len(
+            [s for s in client.settings if not s.active and not s.error]
+        )
 
-        stats_msg = prep_stats_msg(client)
+        if not turned_off_with_errors and not turned_off_no_errors:
+            stats_msg = ""
+        else:
+            working = len([s for s in client.settings if s.active])
+
+            text = f"{ALERT_HEADING}\n\n"
+
+            if turned_off_with_errors:
+                text += (
+                    f"{turned_off_with_errors} рассылок отключены из-за ошибок. "
+                    "Исправьте и включите заново.\n\n"
+                )
+
+            if turned_off_no_errors:
+                text += (
+                    f"{turned_off_no_errors} отключенных рассылок без ошибок. "
+                    "Почему отключены?\n\n"
+                )
+
+            text += (
+                f"{working} (из {len(client.settings)} всего) активных рассылок.\n\n"
+            )
+            text += f"Подробности в файле настроек: {client.spreadsheet_url}."
+
+            stats_msg = text
 
         # Send error message
         if stats_msg:
-            await alert_acc.send_message(chat_id=client.alert_chat, text=stats_msg)
+            await alert_acc.app.send_message(chat_id=client.alert_chat, text=stats_msg)
 
     logger.warning("Alert message sent", extra={"errors": errors})
-
-
-def prep_stats_msg(client: Client):
-    turned_off_with_errors = len(
-        [s for s in client.settings if not s.active and s.error]
-    )
-    turned_off_no_errors = len(
-        [s for s in client.settings if not s.active and not s.error]
-    )
-
-    if not turned_off_with_errors and not turned_off_no_errors:
-        return ""
-
-    working = len([s for s in client.settings if s.active])
-
-    text = f"{ALERT_HEADING}\n\n"
-
-    if turned_off_with_errors:
-        text += (
-            f"{turned_off_with_errors} рассылок отключены из-за ошибок. "
-            "Исправьте и включите заново.\n\n"
-        )
-
-    if turned_off_no_errors:
-        text += (
-            f"{turned_off_no_errors} отключенных рассылок без ошибок. "
-            "Почему отключены?\n\n"
-        )
-
-    text += f"{working} (из {len(client.settings)} всего) активных рассылок.\n\n"
-    text += f"Подробности в файле настроек: {client.spreadsheet_url}."
-
-    return text
 
 
 if __name__ == "__main__":
