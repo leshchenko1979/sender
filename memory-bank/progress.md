@@ -26,8 +26,14 @@
 - Implemented media group forwarding
 - Added slow mode auto-adjustment
 - Enhanced error handling for various Telegram API errors
+- **Fixed critical ?single parameter issue (2024-10-25)**: URLs with query parameters now properly forward media groups
+- **Fixed send_message parameter bug**: Corrected parameter format in publish_stats function
 
 ## Deployment Status
-- Ready for production deployment
-- Docker containerization available
-- Cron job integration complete
+- ✅ Successfully deployed and tested on VDS
+- ✅ All tests passing (93/93)
+- ✅ Docker containerization available
+- ✅ Cron job integration complete
+- ✅ Production ready with media group support for query parameters
+
+

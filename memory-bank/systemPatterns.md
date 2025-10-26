@@ -22,6 +22,7 @@ async def send_message(self, chat_id, text, reply_to_msg_id=None):
 - Detects grouped messages by `grouped_id` attribute
 - Forwards entire media groups together
 - Searches for related messages in a 20-message window
+- **URL Query Parameter Support**: Strips query parameters (like `?single`) before URL parsing to ensure media groups are properly detected and forwarded
 
 ### Error Recovery
 - **Slow Mode**: Auto-adjusts cron schedules for all settings in the same chat
@@ -38,13 +39,16 @@ async def send_message(self, chat_id, text, reply_to_msg_id=None):
 
 ### Message Processing Flow
 1. Parse chat_id and optional topic_id
-2. Determine if forwarding or sending text
-3. Join destination chat proactively
-4. Execute send/forward operation
-5. Handle errors with appropriate recovery
+2. **Clean URL by stripping query parameters** (handles `?single` and other params)
+3. Determine if forwarding or sending text
+4. Join destination chat proactively
+5. Execute send/forward operation
+6. Handle errors with appropriate recovery
 
 ### Schedule Management
 - Uses croniter for schedule checking
 - Moscow timezone for schedule calculations
 - Auto-adjustment for slow mode violations
 - 20% buffer added to required intervals
+
+

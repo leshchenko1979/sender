@@ -273,7 +273,9 @@ async def send_setting(
     chat_id, topic_id = parse_chat_and_topic(setting.chat_id)
 
     try:
-        from_chat_id, message_id = parse_telegram_message_url(setting.text)
+        # Strip query parameters from URL before parsing to handle ?single and other params
+        clean_url = setting.text.split("?")[0] if "?" in setting.text else setting.text
+        from_chat_id, message_id = parse_telegram_message_url(clean_url)
         forward_needed = True
     except Exception:  # not a valid telegram url
         forward_needed = False
@@ -436,7 +438,7 @@ async def publish_stats(errors: dict, fs, client: Client):
     async with alert_acc.session(revalidate=False):
         # Send common errors like no accounts started
         if "" in errors:
-            await alert_acc.app.send_message(chat_id=client.alert_chat, text=errors[""])
+            await alert_acc.app.send_message(client.alert_chat, errors[""])
 
         # Delete last message if it contains alert heading
         app = alert_acc.app
@@ -483,7 +485,7 @@ async def publish_stats(errors: dict, fs, client: Client):
 
         # Send error message
         if stats_msg:
-            await alert_acc.app.send_message(chat_id=client.alert_chat, text=stats_msg)
+            await alert_acc.app.send_message(client.alert_chat, stats_msg)
 
     logger.warning("Alert message sent", extra={"errors": errors})
 

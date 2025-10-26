@@ -41,3 +41,5 @@
 - **Schedule Management**: Moscow timezone for all cron operations
 - **Media Handling**: Special logic for grouped media messages
 - **Auto-Join**: Proactive chat joining to reduce permission errors
+
+
