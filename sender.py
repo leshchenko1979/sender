@@ -367,9 +367,15 @@ def handle_slow_mode_error(client: Client, setting: Setting, wait_seconds: int) 
     client.update_settings_in_gsheets(["schedule", "error"])
 
     if updated_count > 0:
-        return f"Schedule auto-adjusted to every {required_hours} hours for {updated_count} settings in chat {setting.chat_id}"
+        return (
+            f"Schedule auto-adjusted to every {required_hours} hours "
+            f"for {updated_count} settings in chat {setting.chat_id}"
+        )
     else:
-        return f"No schedule adjustments needed - current intervals already sufficient for {len(related_settings)} settings in chat {setting.chat_id}"
+        return (
+            f"No schedule adjustments needed - current intervals already sufficient "
+            f"for {len(related_settings)} settings in chat {setting.chat_id}"
+        )
 
 
 ALERT_HEADING = "Результаты последней рассылки:"
@@ -391,16 +397,14 @@ async def publish_stats(errors: dict, fs, client: Client):
             if getattr(last_msg, "message", None) and ALERT_HEADING in last_msg.message:
                 await app.delete_messages(client.alert_chat, [last_msg.id])
 
-        # Calculate error stats from client.settings:
-        # turned off with errors, active with errors
-
         stats_msg = prep_stats_msg(client)
 
         # Send error message
         if stats_msg:
             await alert_acc.send_message(chat_id=client.alert_chat, text=stats_msg)
-
-    logger.warning("Alert message sent", extra={"errors": errors})
+            logger.warning("Alert message sent", extra={"errors": errors})
+						else:
+            logger.info("Finished with no errors")
 
 
 def prep_stats_msg(client: Client):
