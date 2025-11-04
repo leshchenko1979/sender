@@ -51,4 +51,12 @@ async def send_message(self, chat_id, text, reply_to_msg_id=None):
 - Auto-adjustment for slow mode violations
 - 20% buffer added to required intervals
 
+### Logging and Monitoring Patterns
+- **Dual Logging**: Both system logs (`/var/log/sender.log`) and Supabase logs
+- **Structured Logging**: Consistent format with timestamps and context
+- **Error Tracking**: All errors logged with full context and recovery attempts
+- **Performance Monitoring**: Execution times and success/failure rates tracked
+- **Log Rotation**: Automatic daily rotation with 30-day retention
+- **Debug Information**: Detailed logging for troubleshooting and analysis
+
 

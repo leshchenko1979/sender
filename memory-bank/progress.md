@@ -11,6 +11,7 @@
 - ✅ Error handling and logging
 - ✅ Slow mode auto-adjustment
 - ✅ Supabase logging integration
+- ✅ Log rotation and retention (30 days)
 
 ## Current Implementation
 - **SenderAccount**: Handles all Telegram operations with auto-join
@@ -28,6 +29,8 @@
 - Enhanced error handling for various Telegram API errors
 - **Fixed critical ?single parameter issue (2024-10-25)**: URLs with query parameters now properly forward media groups
 - **Fixed send_message parameter bug**: Corrected parameter format in publish_stats function
+- **Added log rotation (2025-10-29)**: Daily rotation with 30-day retention for /var/log/sender.log
+- **Added timestamps to app logs (2025-10-29)**: All application logs now include timestamps for better debugging
 
 ## Deployment Status
 - ✅ Successfully deployed and tested on VDS

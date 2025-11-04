@@ -72,7 +72,8 @@ tar \
     requirements.txt \
     .env \
     Dockerfile \
-    run.sh
+    run.sh \
+    sender.logrotate
 
 # Copy and extract Python package
 echo "Copying and extracting Python package..."
@@ -103,6 +104,21 @@ ssh ${REMOTE_USER}@${REMOTE_HOST} '
     docker rmi sender || true
     # Build new image
     docker build -t sender -f Dockerfile .
+'
+
+# Set up log rotation
+echo "Setting up log rotation..."
+ssh ${REMOTE_USER}@${REMOTE_HOST} '
+    # Copy logrotate configuration
+    cp /data/projects/sender/sender.logrotate /etc/logrotate.d/sender
+    
+    # Test logrotate configuration
+    logrotate -d /etc/logrotate.d/sender
+    
+    echo "Log rotation configured for /var/log/sender.log"
+    echo "  - Daily rotation"
+    echo "  - Keep 30 days of logs"
+    echo "  - Compress old logs"
 '
 
 # Set up cron jobs

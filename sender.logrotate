@@ -1,0 +1,14 @@
+/var/log/sender.log {
+    daily
+    missingok
+    rotate 30
+    compress
+    delaycompress
+    notifempty
+    create 644 root root
+    postrotate
+        # No need to reload anything for log files
+        true
+    endscript
+}
+

@@ -35,6 +35,20 @@
 - Cron job deployment scripts
 - Supabase file system for session storage
 
+## Logging and Monitoring
+- **Primary Log Location**: `/var/log/sender.log` (VDS)
+- **Log Rotation**: Daily rotation with 30-day retention
+  - Configuration: `/etc/logrotate.d/sender`
+  - Compressed old logs
+  - Automatic cleanup
+- **Log Content**: 
+  - Start/finish timestamps for each run
+  - Full application stdout/stderr from Docker containers with timestamps
+  - Error messages and warnings with timestamps
+  - Message processing results with timestamps
+- **Historical Logs**: Available in rotated files (`/var/log/sender.log.1.gz`, etc.)
+- **Application Logs**: Also logged to Supabase for message outcomes
+
 ## Key Technical Decisions
 - **Session Management**: Uses Supabase file system for Telegram sessions
 - **Error Handling**: Comprehensive exception handling with specific error messages
