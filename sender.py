@@ -428,9 +428,15 @@ def handle_slow_mode_error(client: Client, setting: Setting, wait_seconds: int) 
     client.update_settings_in_gsheets(["schedule", "error"])
 
     if updated_count > 0:
-        return f"Schedule auto-adjusted to every {required_hours} hours for {updated_count} settings in chat {setting.chat_id}"
+        return (
+            f"Schedule auto-adjusted to every {required_hours} hours "
+            f"for {updated_count} settings in chat {setting.chat_id}"
+        )
     else:
-        return f"No schedule adjustments needed - current intervals already sufficient for {len(related_settings)} settings in chat {setting.chat_id}"
+        return (
+            f"No schedule adjustments needed - current intervals already sufficient "
+            f"for {len(related_settings)} settings in chat {setting.chat_id}"
+        )
 
 
 ALERT_HEADING = "Результаты последней рассылки:"
@@ -440,12 +446,13 @@ async def publish_stats(errors: dict, fs, client: Client):
     alert_acc = SenderAccount(fs, client.alert_account)
 
     async with alert_acc.session(revalidate=False):
+        app = alert_acc.app
+
         # Send common errors like no accounts started
         if "" in errors:
-            await alert_acc.app.send_message(client.alert_chat, errors[""])
+            await app.send_message(client.alert_chat, errors[""])
 
         # Delete last message if it contains alert heading
-        app = alert_acc.app
         msgs = await app.get_messages(client.alert_chat, limit=1)
         if msgs:
             last_msg = msgs[0]
@@ -461,11 +468,7 @@ async def publish_stats(errors: dict, fs, client: Client):
             [s for s in client.settings if not s.active and not s.error]
         )
 
-        if not turned_off_with_errors and not turned_off_no_errors:
-            stats_msg = ""
-        else:
-            working = len([s for s in client.settings if s.active])
-
+        if turned_off_with_errors or turned_off_no_errors:
             text = f"{ALERT_HEADING}\n\n"
 
             if turned_off_with_errors:
@@ -481,17 +484,18 @@ async def publish_stats(errors: dict, fs, client: Client):
                 )
 
             text += (
-                f"{working} (из {len(client.settings)} всего) активных рассылок.\n\n"
+                f"{len([s for s in client.settings if s.active])} "
+                f"(из {len(client.settings)} всего) активных рассылок.\n\n"
+                f"Подробности в файле настроек: {client.spreadsheet_url}."
             )
-            text += f"Подробности в файле настроек: {client.spreadsheet_url}."
 
-            stats_msg = text
+            await app.send_message(client.alert_chat, text)
 
-        # Send error message
-        if stats_msg:
-            await alert_acc.app.send_message(client.alert_chat, stats_msg)
+            logger.warning("Alert message sent", extra={"errors": errors})
 
-    logger.warning("Alert message sent", extra={"errors": errors})
+            return
+
+        logger.info("Finished with no errors")
 
 
 if __name__ == "__main__":
