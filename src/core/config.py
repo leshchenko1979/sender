@@ -12,11 +12,21 @@ class AppSettings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
+        extra="allow",
     )
 
+    # Telegram API credentials
+    api_id: int = Field(..., alias="API_ID")
+    api_hash: str = Field(..., alias="API_HASH")
+
+    # Supabase configuration
     supabase_url: str = Field(..., alias="SUPABASE_URL")
     supabase_key: str = Field(..., alias="SUPABASE_KEY")
+
+    # Alert configuration
     alert_account: Optional[str] = Field(None, alias="ALERT_ACCOUNT")
+
+    # Google credentials
     google_service_account_file: Optional[str] = Field(
         None, alias="GOOGLE_SERVICE_ACCOUNT_FILE"
     )

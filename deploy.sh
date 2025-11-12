@@ -90,7 +90,7 @@ COPYFILE_DISABLE=1 tar \
     --exclude='node_modules' \
     -czf "$TEMP_DIR/sender.tar.gz" \
     src \
-    pyproject.toml \
+    requirements.txt \
     clients.yaml \
     google-service-account.json \
     .env \

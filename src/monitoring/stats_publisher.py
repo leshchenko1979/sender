@@ -8,9 +8,19 @@ ALERT_HEADING = "Результаты последней рассылки:"
 
 
 async def publish_stats(
-    errors: dict, fs, client, processed_count: int, successful_count: int
+    errors: dict,
+    fs,
+    client,
+    processed_count: int,
+    successful_count: int,
+    app_settings=None,
 ):
-    alert_acc = SenderAccount(fs, client.alert_account)
+    alert_acc = SenderAccount(
+        fs,
+        client.alert_account,
+        app_settings.api_id if app_settings else None,
+        app_settings.api_hash if app_settings else None,
+    )
 
     async with alert_acc.session(revalidate=False):
         app = alert_acc.app

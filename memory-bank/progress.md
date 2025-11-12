@@ -40,7 +40,7 @@
 - **Added timestamps to app logs (2025-10-29)**: All application logs now include timestamps for better debugging
 - **Fixed media group caption issue (2025-11-12)**: Removed incorrect logic that was adding preceding text messages to media group forwarding, preserving captions attached to media messages
 - **Codebase restructure (2025-11-12)**: Moved all runtime code into `src/`, split message orchestration into dedicated modules, introduced centralized `AppSettings`
-- **Dependency consolidation (2025-11-12)**: Replaced `requirements.txt` with `pyproject.toml`, updated Dockerfile/deploy tooling, reorganized pytest suites under `tests/unit/`
+- **Simplified project structure (2025-11-12)**: Removed `pyproject.toml`, using `requirements.txt` with uv for dependency management, Ruff config in `ruff.toml`
 
 ## Deployment Status
 - ✅ Successfully deployed and tested on VDS

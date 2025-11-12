@@ -30,7 +30,7 @@ async def main():
 
     for client in clients:
         logger.info(f"Starting {client.name}")
-        await process_client(fs, client)
+        await process_client(app_settings, fs, client)
         logger.info(f"Finished {client.name}")
 
     logger.info("Messages sent and logged successfully")
@@ -49,7 +49,7 @@ def set_up_supabase(app_settings: AppSettings):
     return SupabaseTableFileSystem(supabase_client, "sessions")
 
 
-async def process_client(fs, client: Client):
+async def process_client(app_settings, fs, client: Client):
     try:
         errors = {}
         processed_count = 0
@@ -58,7 +58,7 @@ async def process_client(fs, client: Client):
         settings = client.load_settings()
 
         if any(s.active for s in settings):
-            accounts = set_up_accounts(fs, settings)
+            accounts = set_up_accounts(app_settings, fs, settings)
             supabase_logs.load_results_for_client(client.name)
 
             async with accounts.session():
@@ -90,15 +90,19 @@ async def process_client(fs, client: Client):
     except Exception:
         errors[""] = f"Error: {traceback.format_exc()}"
 
-    await publish_stats(errors, fs, client, processed_count, successful_count)
+    await publish_stats(
+        errors, fs, client, processed_count, successful_count, app_settings
+    )
 
     client.update_settings_in_gsheets(["active", "error", "link"])
 
 
-def set_up_accounts(fs, settings: list[Setting]):
+def set_up_accounts(app_settings, fs, settings: list[Setting]):
     return AccountCollection(
         {
-            setting.account: SenderAccount(fs, setting.account)
+            setting.account: SenderAccount(
+                fs, setting.account, app_settings.api_id, app_settings.api_hash
+            )
             for setting in settings
             if setting.active
         },

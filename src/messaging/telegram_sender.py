@@ -13,6 +13,9 @@ class SenderAccount(Account):
     """Defines methods for sending and forwarding messages
     with forced joining the group if the peer is not in the chat yet."""
 
+    def __init__(self, fs, account_id, api_id=None, api_hash=None):
+        super().__init__(fs, account_id, api_id=api_id, api_hash=api_hash)
+
     async def _get_grouped_message_ids(self, from_chat_id, message_id, grouped_id):
         """Retrieve all message IDs in a media group around the given message."""
         search_window = 50  # Search 50 messages before and after to ensure we get all group messages

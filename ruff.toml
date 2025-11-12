@@ -1,0 +1,4 @@
+target-version = "py310"
+
+[lint]
+ignore = ["E501", "E741"]  # Line too long, ambiguous variable name

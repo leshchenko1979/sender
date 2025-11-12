@@ -26,6 +26,12 @@
 - `ALERT_ACCOUNT`: Telegram account used for alert reporting
 - Telegram API credentials (`API_ID`, `API_HASH`) consumed by the shared `tg` dependency
 
+### Environment Loading
+- **Pydantic Settings**: `AppSettings` loads from `.env` file using `SettingsConfigDict(env_file='.env', extra='allow')`
+- **Dependency Injection**: API credentials passed directly to `tg` library constructors instead of relying on environment variables
+- **Clean Architecture**: No runtime environment variable sourcing needed - all configuration handled through pydantic-settings
+- **Updated tg Library**: Modified to accept `api_id` and `api_hash` parameters in `Account.__init__()` for proper dependency injection
+
 ### Google Service Account Configuration
 ```bash
 # Preferred: path to Google service account JSON file
@@ -38,7 +44,8 @@ GOOGLE_SERVICE_ACCOUNT_FILE=google-service-account.json
 Choose one of the Google authentication methods above. The file-based approach is preferred for security.
 
 - `.env`: Environment configuration (loaded once inside `core.config`)
-- `pyproject.toml`: Single source of dependencies and packaging metadata
+- `requirements.txt`: Dependencies managed with uv
+- `ruff.toml`: Code quality configuration
 - `src/cli.py`: Main orchestration entry point (`python -m src.cli`)
 - `src/validate_accounts.py`: Session validation helper
 - `src/core/`: Domain models (`settings.py`), Google client/controller (`clients.py`), configuration (`config.py`)

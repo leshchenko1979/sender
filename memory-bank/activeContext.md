@@ -14,9 +14,9 @@ Optimization of deployment process and Docker build efficiency.
 - **Deployment Visual Enhancement**: Added ANSI colors, section timing, and progress indicators
 - **Log Cleanup**: Suppressed macOS tar extended attributes warnings and logrotate debug output
 - **Build Efficiency**: Separated dependency installation from package installation for better caching
-- Dependencies now declared in `pyproject.toml`; removed `requirements.txt`
+- Dependencies managed with uv via `requirements.txt`
 - Dockerfile installs the package via `pip install .` and runs the new module entrypoint
-- Deployment script packages `src/`, `pyproject.toml`, and supporting assets
+- Deployment script packages `src/`, `requirements.txt`, and supporting assets
 - Unit test suite updated to new import paths; all 93 tests pass locally
 - Added `link` field to Setting model for storing message links in separate Google Sheets column
 - Links now appear in dedicated column instead of being appended to error column
