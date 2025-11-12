@@ -38,7 +38,7 @@
 - **Unified alert reporting**: Authorization failures now integrate with standard report format instead of accumulating separate messages
 - **Added log rotation (2025-10-29)**: Daily rotation with 30-day retention for /var/log/sender.log
 - **Added timestamps to app logs (2025-10-29)**: All application logs now include timestamps for better debugging
-- **Fixed media group caption issue (2025-11-12)**: Removed incorrect logic that was adding preceding text messages to media group forwarding, preserving captions attached to media messages
+- **Fixed media group caption issue (2025-11-12)**: Modified media group forwarding to find and forward only the message containing the caption, preserving text when forwarding media groups
 - **Codebase restructure (2025-11-12)**: Moved all runtime code into `src/`, split message orchestration into dedicated modules, introduced centralized `AppSettings`
 - **Simplified project structure (2025-11-12)**: Removed `pyproject.toml`, using `requirements.txt` with uv for dependency management, Ruff config in `ruff.toml`
 

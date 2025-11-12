@@ -111,10 +111,28 @@ class SenderAccount(Account):
                 # This handles cases where the media group might be incomplete or single-item
                 message_ids = [message_id]
             else:
-                message_ids = sorted(grouped_messages)
+                # For media groups, find the message that contains the caption
+                # In Telegram, caption is usually attached to the last message in the group
+                all_grouped_ids = sorted(grouped_messages)
 
-            # For media groups, captions are attached to the media messages themselves,
-            # so we don't need to look for separate preceding text messages
+                # Get all messages in the group to find the one with caption
+                group_messages = await self.app.get_messages(
+                    from_chat_id, ids=all_grouped_ids
+                )
+
+                # Find message with caption (non-empty text)
+                caption_message = None
+                for msg in group_messages:
+                    if msg and hasattr(msg, "text") and msg.text:
+                        caption_message = msg
+                        break
+
+                # If found message with caption, forward only that one
+                # Otherwise, forward the entire group as fallback
+                if caption_message:
+                    message_ids = [caption_message.id]
+                else:
+                    message_ids = all_grouped_ids
         else:
             message_ids = [message_id]
 
