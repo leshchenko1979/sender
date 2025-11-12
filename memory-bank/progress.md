@@ -34,6 +34,8 @@
 - **Unified alert reporting**: Authorization failures now integrate with standard report format instead of accumulating separate messages
 - **Added log rotation (2025-10-29)**: Daily rotation with 30-day retention for /var/log/sender.log
 - **Added timestamps to app logs (2025-10-29)**: All application logs now include timestamps for better debugging
+- **Codebase restructure (2025-11-12)**: Moved all runtime code into `src/`, split message orchestration into dedicated modules, introduced centralized `AppSettings`
+- **Dependency consolidation (2025-11-12)**: Replaced `requirements.txt` with `pyproject.toml`, updated Dockerfile/deploy tooling, reorganized pytest suites under `tests/unit/`
 
 ## Deployment Status
 - ✅ Successfully deployed and tested on VDS

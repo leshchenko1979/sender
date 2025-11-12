@@ -1,6 +1,6 @@
 import pytest
 
-from cron_utils import (
+from src.scheduling.cron_utils import (
     adjust_cron_interval,
     calculate_interval_hours,
     format_schedule_change_message,

@@ -4,7 +4,7 @@ from logging import getLogger
 import supabase
 from reretry import retry
 
-import settings
+from ..core.settings import Setting
 
 logger = getLogger(__name__)
 
@@ -45,7 +45,7 @@ class SupabaseLogHandler:
         self.cache = {row["setting_unique_id"]: row["datetime"] for row in results.data}
 
     @retry(tries=3)
-    def get_last_successful_entry(self, setting: settings.Setting):
+    def get_last_successful_entry(self, setting: Setting):
         """
         Retrieves the last successful log entry based on a given setting.
 
@@ -63,7 +63,7 @@ class SupabaseLogHandler:
             return datetime.datetime.fromisoformat(result)
 
     @retry(tries=3)
-    def add_log_entry(self, client_name: str, setting: settings.Setting, result: str):
+    def add_log_entry(self, client_name: str, setting: Setting, result: str):
         # Save time by not writing `skipped` and `already sent`
         # into the database
         entry = {

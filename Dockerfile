@@ -2,15 +2,15 @@ FROM python:3-alpine
 
 RUN apk update && apk add git
 
-ADD /requirements.txt /
+WORKDIR /app
 
-RUN pip install -r requirements.txt --no-cache
+COPY pyproject.toml README.md ./
+COPY src ./src
+COPY clients.yaml .
+COPY google-service-account.json .
+COPY .env .
+COPY run.sh sender.logrotate .
 
-ADD /.env /
+RUN pip install --no-cache-dir .
 
-ADD /clients.py /settings.py /sender.py /supabase_logs.py /cron_utils.py /
-ADD /google-service-account.json /
-
-ADD clients.yaml /
-
-CMD ["python", "/sender.py"]
+CMD ["python", "-m", "src.cli"]

@@ -1,8 +1,7 @@
-import datetime
-import logging
+from __future__ import annotations
+
 import re
-import traceback
-from math import ceil
+from typing import Any
 
 from telethon.errors import (
     ChatAdminRequiredError,
@@ -15,102 +14,17 @@ from telethon.errors import (
 )
 from tg.utils import parse_telegram_message_url
 
-from clients import Client
-from cron_utils import adjust_cron_interval, format_schedule_change_message
-from settings import Setting
-from telegram_sender import SenderAccount
-from telegram_utils import parse_chat_and_topic, _generate_message_link
-
-logger = logging.getLogger(__name__)
-
-
-async def process_setting_outer(
-    client_name: str,
-    setting: Setting,
-    accounts,
-    errors: list[str],
-    client: Client = None,
-    supabase_logs=None,
-):
-    was_processed = False
-    was_successful = False
-
-    if setting.active:
-        try:
-            successful = supabase_logs.get_last_successful_entry(setting)
-            # Check the setting time to determine if a message should be sent based
-            # on the last time it was sent.
-            if not successful:
-                result = "Message was never sent before: logged successfully"
-                was_processed = True
-                was_successful = True
-            else:
-                try:
-                    should_be_run = setting.should_be_run(successful)
-                    result = None if should_be_run else "Message already sent recently"
-                    if should_be_run:
-                        was_processed = True
-                except Exception as e:
-                    result = (
-                        f"Error: Could not figure out the crontab setting: {str(e)}"
-                    )
-            if not result:
-                result, message_info = await send_setting(setting, accounts, client)
-
-        except Exception:
-            result = f"Error: {traceback.format_exc()}"
-    else:
-        result = "Setting skipped"
-
-    # add log entry
-    try:
-        supabase_logs.add_log_entry(client_name, setting, result)
-    except Exception:
-        result = f"Logging error: {traceback.format_exc()}"
-
-    # add error to error list and setting
-    if "error" in result.lower():
-        errors[setting.get_hash()] = result
-        setting.error = result
-        setting.active = 0
-        if was_processed:
-            was_successful = False
-    elif "successfully" in result.lower():
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        error_text = f"ОК: {timestamp}"
-
-        # Try to generate link to the published message
-        if (
-            "message_info" in locals()
-            and message_info
-            and isinstance(message_info, dict)
-            and "message_ids" in message_info
-        ):
-            try:
-                # Get account app for entity resolution
-                acc = accounts[setting.account]
-                first_message_id = message_info["message_ids"][
-                    0
-                ]  # Use first message ID
-                link = await _generate_message_link(
-                    chat_id=message_info["chat_id"],
-                    message_id=first_message_id,
-                    topic_id=message_info.get("topic_id"),
-                    account_app=acc.app,
-                )
-                if link:
-                    error_text += f" - {link}"
-            except Exception:
-                # If link generation fails, just use timestamp
-                pass
-
-        setting.error = error_text
-        was_successful = True
-
-    return was_processed, was_successful
+from ..core.clients import Client
+from ..core.settings import Setting
+from ..scheduling.cron_utils import humanize_seconds
+from ..utils.telegram_utils import parse_chat_and_topic
+from .error_handlers import handle_slow_mode_error
+from .telegram_sender import SenderAccount
 
 
-async def send_setting(setting: Setting, accounts, client: Client = None):
+async def send_setting(
+    setting: Setting, accounts: Any, client: Client | None = None
+) -> tuple[str, dict[str, Any] | None]:
     # Parse chat_id to extract optional topic
     chat_id, topic_id = parse_chat_and_topic(setting.chat_id)
 
@@ -137,7 +51,7 @@ async def send_setting(setting: Setting, accounts, client: Client = None):
             )
             result = "Message forwarded successfully"
             # Extract message IDs from forwarded messages
-            message_ids = []
+            message_ids: list[int] = []
             if hasattr(forwarded_messages, "updates"):
                 for update in forwarded_messages.updates:
                     if hasattr(update, "message") and hasattr(update.message, "id"):
@@ -201,8 +115,6 @@ async def send_setting(setting: Setting, accounts, client: Client = None):
             result = handle_slow_mode_error(client, setting, seconds)
         else:
             # Fallback to old behavior if we can't extract seconds or client not available
-            from cron_utils import humanize_seconds
-
             wait_text = humanize_seconds(seconds) if seconds is not None else str(e)
             result = (
                 f"Error: Слишком рано отправляется (подождать {wait_text}). "
@@ -253,61 +165,3 @@ async def send_setting(setting: Setting, accounts, client: Client = None):
         return result, None
 
     return result, None
-
-
-def handle_slow_mode_error(client: Client, setting: Setting, wait_seconds: int) -> str:
-    """
-    Handle SlowModeWaitError by adjusting schedules for all settings targeting the same chat.
-
-    Args:
-        client: Client containing all settings
-        setting: The setting that triggered the slow mode error
-        wait_seconds: Number of seconds to wait before next message
-
-    Returns:
-        Result message describing the changes made
-    """
-    # Step 1: Calculate required interval (round up to hours)
-    # Handle edge cases where wait_seconds is 0 or negative
-    if wait_seconds <= 0:
-        wait_seconds = 3600  # Default to 1 hour minimum
-    required_hours = ceil((wait_seconds * 1.2) / 3600)  # 20% buffer
-
-    # Step 2: Find all active settings for same chat
-    related_settings = [
-        s for s in client.settings if s.chat_id == setting.chat_id and s.active
-    ]
-
-    if not related_settings:
-        return "No active settings found for this chat"
-
-    # Step 3: Adjust schedules for all related settings
-    updated_count = 0
-    for s in related_settings:
-        old_schedule = s.schedule
-        new_schedule = adjust_cron_interval(old_schedule, required_hours)
-
-        if new_schedule != old_schedule:
-            s.schedule = new_schedule
-            s.error = format_schedule_change_message(
-                wait_seconds,
-                old_schedule,
-                new_schedule,
-                required_hours,
-                len(related_settings),
-            )
-            updated_count += 1
-
-    # Step 4: Update Google Sheets with new schedules and errors
-    client.update_settings_in_gsheets(["schedule", "error"])
-
-    if updated_count > 0:
-        return (
-            f"Schedule auto-adjusted to every {required_hours} hours "
-            f"for {updated_count} settings in chat {setting.chat_id}"
-        )
-    else:
-        return (
-            f"No schedule adjustments needed - current intervals already sufficient "
-            f"for {len(related_settings)} settings in chat {setting.chat_id}"
-        )

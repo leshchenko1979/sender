@@ -1,41 +1,46 @@
 import asyncio
-import os
 from logging import ERROR, getLogger
 
 import supabase
-from pyrogram.errors import FloodWait, PasswordHashInvalid, PhoneCodeInvalid
+from telethon.errors import FloodWaitError, PasswordHashInvalidError, PhoneCodeInvalidError
 from tg.account import Account
 from tg.supabasefs import SupabaseTableFileSystem
 
-from . import settings as stng
+from .core.clients import load_clients
+from .core.config import AppSettings, get_settings
+from .core.settings import Setting
+from .scheduling.cron_utils import humanize_seconds
 
 getLogger("httpx").setLevel(ERROR)
-getLogger("pyrogram").setLevel(ERROR)
 
 
 async def main():
-    settings = stng.load_settings()
+    app_settings = get_settings()
+    clients = load_clients()
+    settings: list[Setting] = []
+    for client in clients:
+        settings.extend(client.load_settings())
 
-    fs = load_fs()
+    fs = load_fs(app_settings)
 
     print("Подготовка закончена.")
 
-    await validate_accs(settings, fs)
+    await validate_accs(settings, fs, app_settings)
 
     print("Все аккаунты проверены.")
 
 
-def load_fs():
+def load_fs(app_settings: AppSettings):
     return SupabaseTableFileSystem(
-        supabase.create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"]),
+        supabase.create_client(app_settings.supabase_url, app_settings.supabase_key),
         "sessions",
     )
 
 
-async def validate_accs(settings, fs):
-    distinct_account_ids = {
-        setting.account for setting in settings if setting.active
-    } | {os.environ["ALERT_ACCOUNT"]}
+async def validate_accs(settings: list[Setting], fs, app_settings: AppSettings):
+    distinct_account_ids = {setting.account for setting in settings if setting.active}
+    if app_settings.alert_account:
+        distinct_account_ids.add(app_settings.alert_account)
 
     for account in distinct_account_ids:
         print("Проверка аккаунта", to_phone_format(account))
@@ -44,11 +49,9 @@ async def validate_accs(settings, fs):
                 async with Account(fs, account).session(revalidate=True):
                     print("OK")
                     break
-            except (PasswordHashInvalid, PhoneCodeInvalid):
+            except (PasswordHashInvalidError, PhoneCodeInvalidError):
                 print("Некорректно")
-            except FloodWait as e:
-                from cron_utils import humanize_seconds
-
+            except FloodWaitError as e:
                 print(
                     f"Слишком много неправильных попыток. Подождите {humanize_seconds(e.value)}"
                 )

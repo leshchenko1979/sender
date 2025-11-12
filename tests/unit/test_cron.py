@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 import croniter
 import pytest
 
-from settings import check_cron, check_cron_tz
+from src.core.settings import check_cron, check_cron_tz
 
 
 # Happy path tests with various realistic test values

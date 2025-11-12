@@ -1,40 +1,59 @@
 # Technical Context
 
 ## Technology Stack
-- **Python 3.x**: Core runtime
+- **Python 3.10+**: Core runtime
 - **Telethon**: Telegram API client library
 - **Supabase**: Database and file storage
 - **Google Sheets API**: Configuration management
 - **Cron**: Scheduling system
 
 ## Dependencies
-- `telethon`: Telegram API interactions
+- `telethon`: Telegram interactions
 - `supabase`: Database operations
 - `gspread`: Google Sheets integration
-- `pydantic`: Data validation
+- `pydantic`, `pydantic-settings`: Data modelling and configuration loading
 - `croniter`: Cron schedule parsing
-- `python-dotenv`: Environment variable management
+- `icontract`, `reretry`, `more-itertools`, `tg` (custom account helpers)
 
 ## Environment Variables
+
+### Required Variables
 - `SUPABASE_URL`: Database connection
 - `SUPABASE_KEY`: Database authentication
-- `GOOGLE_SERVICE_ACCOUNT_FILE`: Google Sheets credentials (file path)
-- `GOOGLE_SERVICE_ACCOUNT`: Google Sheets credentials (JSON string)
+- `GOOGLE_SERVICE_ACCOUNT_FILE` **or** `GOOGLE_SERVICE_ACCOUNT`: Google credentials JSON
 
-## File Structure
-- `sender.py`: Main orchestration logic and entry point
-- `telegram_sender.py`: SenderAccount class and Telegram message operations
-- `message_processor.py`: Message processing and sending logic
-- `telegram_utils.py`: Telegram utility functions and URL parsing
-- `stats_publisher.py`: Statistics publishing and alert functionality
-- `clients.py`: Client and Google Sheets integration
-- `settings.py`: Setting model and cron utilities
+### Optional Variables
+- `ALERT_ACCOUNT`: Telegram account used for alert reporting
+- Telegram API credentials (`API_ID`, `API_HASH`) consumed by the shared `tg` dependency
+
+### Google Service Account Configuration
+```bash
+# Preferred: path to Google service account JSON file
+GOOGLE_SERVICE_ACCOUNT_FILE=google-service-account.json
+
+# Legacy fallback: inline JSON string
+# GOOGLE_SERVICE_ACCOUNT={"type":"service_account", ...}
+```
+
+Choose one of the Google authentication methods above. The file-based approach is preferred for security.
+
+- `.env`: Environment configuration (loaded once inside `core.config`)
+- `pyproject.toml`: Single source of dependencies and packaging metadata
+- `src/cli.py`: Main orchestration entry point (`python -m src.cli`)
+- `src/validate_accounts.py`: Session validation helper
+- `src/core/`: Domain models (`settings.py`), Google client/controller (`clients.py`), configuration (`config.py`)
+- `src/messaging/`: Orchestrator, sender, and slow-mode error handlers
+- `src/infrastructure/`: Supabase logging bridge
+- `src/monitoring/`: Alert publisher
+- `src/scheduling/`: Cron utilities
+- `src/utils/`: Telegram URL helpers
 - `clients.yaml`: Client configuration
 - `google-service-account.json`: Google credentials
 - `memory-bank/`: Project documentation
+- `tests/unit/`: Pytest suites with shared fixtures (`tests/conftest.py`)
 
 ## Development Setup
-- Uses virtual environment
+- Install with `pip install -e .[dev]`
 - Docker support with Dockerfile
 - Cron job deployment scripts
 - Supabase file system for session storage

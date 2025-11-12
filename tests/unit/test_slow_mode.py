@@ -1,8 +1,8 @@
 from unittest.mock import Mock
 
-from clients import Client
-from sender import handle_slow_mode_error
-from settings import Setting
+from src.core.clients import Client
+from src.core.settings import Setting
+from src.messaging.error_handlers import handle_slow_mode_error
 
 
 class TestHandleSlowModeError:

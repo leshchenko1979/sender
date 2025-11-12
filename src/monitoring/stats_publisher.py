@@ -1,5 +1,6 @@
 import logging
-from telegram_sender import SenderAccount
+
+from ..messaging.telegram_sender import SenderAccount
 
 logger = logging.getLogger(__name__)
 

@@ -1,4 +1,4 @@
-from telegram_utils import parse_chat_and_topic
+from src.utils.telegram_utils import parse_chat_and_topic
 
 
 class TestParseChatAndTopic:

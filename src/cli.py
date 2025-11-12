@@ -1,20 +1,18 @@
 import asyncio
 import logging
-import os
 import traceback
 
-import dotenv
 import supabase
 from tg.account import AccountCollection, AccountStartFailed
 from tg.supabasefs import SupabaseTableFileSystem
 
-from clients import Client, load_clients
-from message_processor import process_setting_outer
-from settings import Setting
-from stats_publisher import publish_stats
-from supabase_logs import SupabaseLogHandler
-from telegram_sender import SenderAccount
-
+from .core.clients import Client, load_clients
+from .core.config import AppSettings, get_settings
+from .core.settings import Setting
+from .infrastructure.supabase_logs import SupabaseLogHandler
+from .messaging.orchestrator import process_setting_outer
+from .messaging.telegram_sender import SenderAccount
+from .monitoring.stats_publisher import publish_stats
 
 # Set up standard Python logging
 logging.basicConfig(
@@ -26,8 +24,8 @@ logger = logging.getLogger(__name__)
 
 
 async def main():
-    dotenv.load_dotenv()
-    fs = set_up_supabase()
+    app_settings = get_settings()
+    fs = set_up_supabase(app_settings)
     clients = load_clients()
 
     for client in clients:
@@ -38,11 +36,12 @@ async def main():
     logger.info("Messages sent and logged successfully")
 
 
-def set_up_supabase():
+def set_up_supabase(app_settings: AppSettings):
     global supabase_client, supabase_logs
 
     supabase_client = supabase.create_client(
-        os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"]
+        app_settings.supabase_url,
+        app_settings.supabase_key,
     )
 
     supabase_logs = SupabaseLogHandler(supabase_client)

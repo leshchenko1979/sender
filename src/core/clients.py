@@ -1,5 +1,4 @@
 import json
-import os
 from functools import cache
 
 import gspread
@@ -8,7 +7,8 @@ import yaml
 from icontract import ensure
 from reretry import retry
 
-from settings import Setting
+from .config import get_settings
+from .settings import Setting
 
 
 class Client(pydantic.BaseModel, extra="allow"):
@@ -77,11 +77,17 @@ def get_worksheet(spreadsheet_url) -> gspread.Worksheet:
 @ensure(lambda result: result, "Cannot load data from Google Sheets")
 @retry(tries=3)
 def get_google_client():
-    credentials_file_path = os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE")
+    app_settings = get_settings()
+    credentials_file_path = app_settings.google_service_account_file
     if credentials_file_path:
         with open(credentials_file_path, "r") as credentials_file:
             service_dict = json.load(credentials_file)
     else:
-        service_string = os.environ["GOOGLE_SERVICE_ACCOUNT"]
+        service_string = app_settings.google_service_account
+        if not service_string:
+            raise ValueError(
+                "Missing Google service account credentials. "
+                "Set GOOGLE_SERVICE_ACCOUNT_FILE or GOOGLE_SERVICE_ACCOUNT."
+            )
         service_dict = json.loads(service_string)
     return gspread.service_account_from_dict(service_dict)

@@ -3,8 +3,8 @@ from unittest.mock import Mock, patch
 import pytest
 from pydantic import ValidationError
 
-from clients import Client
-from settings import Setting
+from src.core.clients import Client
+from src.core.settings import Setting
 
 
 class TestSettingValidation:
@@ -20,15 +20,11 @@ class TestSettingValidation:
         ],
         ids=str,
     )
-    def test_setting_account_happy_path(self, input_account, expected_account):
+    def test_setting_account_happy_path(
+        self, setting_factory, input_account, expected_account
+    ):
         # Act
-        setting = Setting(
-            active=True,
-            account=input_account,
-            schedule="* * * * *",
-            chat_id="12345",
-            text="Hello",
-        )
+        setting = setting_factory(account=input_account)
 
         # Assert
         assert setting.account == expected_account
@@ -42,16 +38,10 @@ class TestSettingValidation:
         ],
         ids=str,
     )
-    def test_setting_account_edge_cases(self, input_account):
+    def test_setting_account_edge_cases(self, setting_factory, input_account):
         # Act & Assert
         with pytest.raises(ValidationError):
-            Setting(
-                active=True,
-                account=input_account,
-                schedule="* * * * *",
-                chat_id="12345",
-                text="Hello",
-            )
+            setting_factory(account=input_account)
 
     # Error cases
     @pytest.mark.parametrize(
@@ -63,20 +53,14 @@ class TestSettingValidation:
         ],
         ids=str,
     )
-    def test_setting_account_error_cases(self, input_account):
+    def test_setting_account_error_cases(self, setting_factory, input_account):
         # Act & Assert
         with pytest.raises(ValidationError):
-            Setting(
-                active=True,
-                account=input_account,
-                schedule="* * * * *",
-                chat_id="12345",
-                text="Hello",
-            )
+            setting_factory(account=input_account)
 
 
 # Test load_settings
-@patch("clients.get_worksheet")
+@patch("src.core.clients.get_worksheet")
 def test_load_settings(mock_get_worksheet):
     # Arrange
     mock_worksheet = Mock()
@@ -105,7 +89,7 @@ def test_load_settings(mock_get_worksheet):
 
 
 # Test get_worksheet function
-@patch("clients.get_google_client")
+@patch("src.core.clients.get_google_client")
 def test_get_worksheet(mock_get_google_client):
     # Arrange
     mock_service_account = Mock()
@@ -116,7 +100,7 @@ def test_get_worksheet(mock_get_google_client):
     )
 
     # Act
-    from clients import get_worksheet
+    from src.core.clients import get_worksheet
 
     result = get_worksheet("https://example.com/spreadsheet")
 

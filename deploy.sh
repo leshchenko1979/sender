@@ -62,14 +62,11 @@ tar \
     --exclude='.pytest_cache' \
     --exclude='node_modules' \
     -czf "$TEMP_DIR/sender.tar.gz" \
-    sender.py \
-    clients.py \
+    src \
+    pyproject.toml \
+    README.md \
     clients.yaml \
-    settings.py \
-    supabase_logs.py \
-    cron_utils.py \
     google-service-account.json \
-    requirements.txt \
     .env \
     Dockerfile \
     run.sh \

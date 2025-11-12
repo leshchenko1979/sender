@@ -1,28 +1,16 @@
 # Active Context
 
 ## Current Focus
-Unified alert reporting system. Authorization failures now integrate with standard report format instead of creating separate accumulating messages.
+Codebase consolidation into a single `src/` package with clear module boundaries and centralized configuration for environment management.
 
 ## Key Implementation Details
-- Modified `process_setting_outer` to return processed/successful status flags
-- Updated `process_client` to aggregate statistics from all settings
-- Changed `publish_stats` to inline critical errors (like authorization failures) in the main report body
-- Authorization errors now display with ❌ emoji and skip detailed statistics when present
-- Alert messages are properly replaced regardless of error type
-- Added message link generation for successful sends in Google Sheets
-- Google Sheets now shows "ОК: YYYY-MM-DD HH:MM:SS - https://t.me/link" for successful sends
+- Created `src/` with dedicated subpackages: `core`, `messaging`, `infrastructure`, `monitoring`, `scheduling`, `utils`
+- Split legacy `message_processor.py` into `messaging/orchestrator.py`, `messaging/sender.py`, and `messaging/error_handlers.py`
+- Introduced `core/config.py` using `pydantic-settings` to load `.env` once and expose typed settings
+- Updated entrypoints to run via `python -m src.cli`; reorganized tests under `tests/unit/` with shared fixtures
 
-## Recent Changes (2024-10-25)
-- Added URL cleaning logic in `send_setting()` method to strip query parameters
-- Fixed `send_message()` parameter bug in `publish_stats()` function
-- **Enhanced notification system**: Alerts now always include processing statistics
-- **Unified alert reporting**: Authorization failures now replace previous reports instead of accumulating
-- Successfully deployed and tested on VDS with exit code 0
-- All tests passing (93/93) with no linting errors
-
-## Current State
-- URLs with `?single` parameter now work correctly for media group forwarding
-- System processes both regular URLs and URLs with query parameters
-- Alert notifications now always report processing statistics
-- Deployment successful on VDS with proper error handling
-- Media groups are no longer ignored for URLs containing query parameters
+## Recent Changes (2025-11-12)
+- Dependencies now declared in `pyproject.toml`; removed `requirements.txt`
+- Dockerfile installs the package via `pip install .` and runs the new module entrypoint
+- Deployment script packages `src/`, `pyproject.toml`, and supporting assets
+- Unit test suite updated to new import paths; all 93 tests pass locally
