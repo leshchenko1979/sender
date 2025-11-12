@@ -15,27 +15,77 @@ class SenderAccount(Account):
 
     async def _get_grouped_message_ids(self, from_chat_id, message_id, grouped_id):
         """Retrieve all message IDs in a media group around the given message."""
-        search_window = 20  # Search 20 messages before and after
-        offsets_to_try = [message_id + search_window, message_id]
+        search_window = 50  # Search 50 messages before and after to ensure we get all group messages
+        grouped_messages = []
 
-        for offset_id in offsets_to_try:
-            grouped_messages = []
-            try:
-                async for msg in self.app.iter_messages(
-                    from_chat_id,
-                    offset_id=offset_id,
-                    limit=search_window * 2,
+        try:
+            # Search backwards from the target message
+            async for msg in self.app.iter_messages(
+                from_chat_id,
+                offset_id=message_id,
+                limit=search_window,
+                reverse=True,  # Search backwards (older messages first)
+            ):
+                if hasattr(msg, "grouped_id") and msg.grouped_id == grouped_id:
+                    grouped_messages.append(msg.id)
+
+            # Search forwards from the target message (excluding the target message itself)
+            async for msg in self.app.iter_messages(
+                from_chat_id,
+                offset_id=message_id,
+                limit=search_window,
+            ):
+                if (
+                    hasattr(msg, "grouped_id")
+                    and msg.grouped_id == grouped_id
+                    and msg.id != message_id
+                ):  # Don't duplicate the target message
+                    grouped_messages.append(msg.id)
+
+            # Remove duplicates and sort to maintain chronological order
+            grouped_messages = sorted(list(set(grouped_messages)))
+
+        except ValueError:
+            # If search fails, return empty list
+            pass
+
+        return grouped_messages
+
+    async def _find_preceding_text_message(self, from_chat_id, first_media_message_id):
+        """Find a text message immediately preceding a media group that might be related."""
+        try:
+            # Look for messages immediately before the first media message
+            async for msg in self.app.iter_messages(
+                from_chat_id,
+                offset_id=first_media_message_id,
+                limit=5,  # Check up to 5 messages before
+                reverse=True,  # Search backwards (older messages first)
+            ):
+                # Skip messages that are part of the same media group
+                if hasattr(msg, "grouped_id") and msg.grouped_id is not None:
+                    continue
+
+                # Check if this is a text message (has text but no media)
+                if (
+                    hasattr(msg, "text")
+                    and msg.text
+                    and not hasattr(msg, "media")
+                    or msg.media is None
                 ):
-                    if hasattr(msg, "grouped_id") and msg.grouped_id == grouped_id:
-                        grouped_messages.append(msg.id)
+                    # Only include if it's reasonably close (within 10 message IDs)
+                    if first_media_message_id - msg.id <= 10:
+                        return msg.id
 
-                if grouped_messages:
-                    return grouped_messages
-            except ValueError:
-                # Try next offset if this one fails
-                continue
+                # Stop searching if we find a message that's too old or has media
+                # This prevents including unrelated text messages
+                if first_media_message_id - msg.id > 10:
+                    break
 
-        return []
+        except ValueError:
+            # If search fails, return None
+            pass
+
+        return None
 
     async def _forward_grouped_or_single(
         self, chat_id, from_chat_id, message_id, reply_to_msg_id=None
@@ -54,8 +104,14 @@ class SenderAccount(Account):
                 from_chat_id, message_id, source_message.grouped_id
             )
             if not grouped_messages:
-                raise ValueError("Медиагруппа неполная или недоступна")
-            message_ids = sorted(grouped_messages)
+                # If no other grouped messages found, just forward the single message
+                # This handles cases where the media group might be incomplete or single-item
+                message_ids = [message_id]
+            else:
+                message_ids = sorted(grouped_messages)
+
+            # For media groups, captions are attached to the media messages themselves,
+            # so we don't need to look for separate preceding text messages
         else:
             message_ids = [message_id]
 

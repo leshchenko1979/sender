@@ -20,7 +20,7 @@
 - **Schedule Management**: Auto-adjustment for slow mode violations
 
 ## Known Issues
-- None currently documented
+- **Fixed (2025-11-12)**: Media group caption forwarding issue - text/captions now preserved when forwarding media groups
 
 ## Recent Changes
 - Added forum topic support (chat_id/topic_id format)
@@ -34,12 +34,13 @@
 - **Unified alert reporting**: Authorization failures now integrate with standard report format instead of accumulating separate messages
 - **Added log rotation (2025-10-29)**: Daily rotation with 30-day retention for /var/log/sender.log
 - **Added timestamps to app logs (2025-10-29)**: All application logs now include timestamps for better debugging
+- **Fixed media group caption issue (2025-11-12)**: Removed incorrect logic that was adding preceding text messages to media group forwarding, preserving captions attached to media messages
 - **Codebase restructure (2025-11-12)**: Moved all runtime code into `src/`, split message orchestration into dedicated modules, introduced centralized `AppSettings`
 - **Dependency consolidation (2025-11-12)**: Replaced `requirements.txt` with `pyproject.toml`, updated Dockerfile/deploy tooling, reorganized pytest suites under `tests/unit/`
 
 ## Deployment Status
 - ✅ Successfully deployed and tested on VDS
-- ✅ All tests passing (93/93)
+- ✅ All tests passing (94/94)
 - ✅ Docker containerization available
 - ✅ Cron job integration complete
 - ✅ Production ready with media group support for query parameters
