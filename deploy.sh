@@ -64,7 +64,6 @@ tar \
     -czf "$TEMP_DIR/sender.tar.gz" \
     src \
     pyproject.toml \
-    README.md \
     clients.yaml \
     google-service-account.json \
     .env \

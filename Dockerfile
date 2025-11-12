@@ -4,7 +4,7 @@ RUN apk update && apk add git
 
 WORKDIR /app
 
-COPY pyproject.toml README.md ./
+COPY pyproject.toml ./
 COPY src ./src
 COPY clients.yaml .
 COPY google-service-account.json .
