@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import logging
 import os
 import re
@@ -184,6 +185,8 @@ def set_up_supabase():
 async def process_client(fs, client: Client):
     try:
         errors = {}
+        processed_count = 0
+        successful_count = 0
 
         settings = client.load_settings()
 
@@ -192,7 +195,7 @@ async def process_client(fs, client: Client):
             supabase_logs.load_results_for_client(client.name)
 
             async with accounts.session():
-                await asyncio.gather(
+                results = await asyncio.gather(
                     *[
                         process_setting_outer(
                             client.name, setting, accounts, errors, client
@@ -200,6 +203,13 @@ async def process_client(fs, client: Client):
                         for setting in settings
                     ]
                 )
+
+                # Подсчет статистики из результатов
+                for was_processed, was_successful in results:
+                    if was_processed:
+                        processed_count += 1
+                        if was_successful:
+                            successful_count += 1
         else:
             logger.warning(f"No active settings for {client.name}")
 
@@ -208,7 +218,7 @@ async def process_client(fs, client: Client):
     except Exception:
         errors[""] = f"Error: {traceback.format_exc()}"
 
-    await publish_stats(errors, fs, client)
+    await publish_stats(errors, fs, client, processed_count, successful_count)
 
     client.update_settings_in_gsheets(["active", "error"])
 
@@ -232,6 +242,9 @@ async def process_setting_outer(
     errors: list[str],
     client: Client = None,
 ):
+    was_processed = False
+    was_successful = False
+
     if setting.active:
         try:
             successful = supabase_logs.get_last_successful_entry(setting)
@@ -239,16 +252,20 @@ async def process_setting_outer(
             # on the last time it was sent.
             if not successful:
                 result = "Message was never sent before: logged successfully"
+                was_processed = True
+                was_successful = True
             else:
                 try:
                     should_be_run = setting.should_be_run(successful)
                     result = None if should_be_run else "Message already sent recently"
+                    if should_be_run:
+                        was_processed = True
                 except Exception as e:
                     result = (
                         f"Error: Could not figure out the crontab setting: {str(e)}"
                     )
             if not result:
-                result = await send_setting(setting, accounts, client)
+                result, message_info = await send_setting(setting, accounts, client)
 
         except Exception:
             result = f"Error: {traceback.format_exc()}"
@@ -266,8 +283,41 @@ async def process_setting_outer(
         errors[setting.get_hash()] = result
         setting.error = result
         setting.active = 0
+        if was_processed:
+            was_successful = False
     elif "successfully" in result.lower():
-        setting.error = ""
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        error_text = f"ОК: {timestamp}"
+
+        # Try to generate link to the published message
+        if (
+            "message_info" in locals()
+            and message_info
+            and isinstance(message_info, dict)
+            and "message_ids" in message_info
+        ):
+            try:
+                # Get account app for entity resolution
+                acc = accounts[setting.account]
+                first_message_id = message_info["message_ids"][
+                    0
+                ]  # Use first message ID
+                link = await _generate_message_link(
+                    chat_id=message_info["chat_id"],
+                    message_id=first_message_id,
+                    topic_id=message_info.get("topic_id"),
+                    account_app=acc.app,
+                )
+                if link:
+                    error_text += f" - {link}"
+            except Exception:
+                # If link generation fails, just use timestamp
+                pass
+
+        setting.error = error_text
+        was_successful = True
+
+    return was_processed, was_successful
 
 
 async def send_setting(
@@ -291,36 +341,69 @@ async def send_setting(
         await acc._join_chat(chat_id)
 
         if forward_needed:
-            await acc._forward_grouped_or_single(
+            forwarded_messages = await acc._forward_grouped_or_single(
                 chat_id=chat_id,
                 from_chat_id=from_chat_id,
                 message_id=message_id,
                 reply_to_msg_id=topic_id,
             )
             result = "Message forwarded successfully"
+            # Extract message IDs from forwarded messages
+            message_ids = []
+            if hasattr(forwarded_messages, "updates"):
+                for update in forwarded_messages.updates:
+                    if hasattr(update, "message") and hasattr(update.message, "id"):
+                        message_ids.append(update.message.id)
+            elif hasattr(forwarded_messages, "messages"):
+                for msg in forwarded_messages.messages:
+                    if hasattr(msg, "id"):
+                        message_ids.append(msg.id)
+            # If we can't extract IDs, return basic success info
+            if not message_ids:
+                return result, {"chat_id": chat_id, "topic_id": topic_id}
+
+            return result, {
+                "chat_id": chat_id,
+                "topic_id": topic_id,
+                "message_ids": message_ids,
+            }
 
         else:
-            await acc.app.send_message(
+            sent_message = await acc.app.send_message(
                 chat_id=chat_id,
                 text=setting.text,
                 reply_to=topic_id,
             )
             result = "Message sent successfully"
+            message_id = getattr(sent_message, "id", None)
+            if message_id:
+                return result, {
+                    "chat_id": chat_id,
+                    "topic_id": topic_id,
+                    "message_ids": [message_id],
+                }
+            else:
+                return result, {"chat_id": chat_id, "topic_id": topic_id}
 
     except ChatWriteForbiddenError:
         result = "Error: Нет прав для отправки сообщения"
+        return result, None
 
     except ChatSendMediaForbiddenError:
         result = "Error: Нет прав для отправки изображений"
+        return result, None
 
     except ChatAdminRequiredError:
         result = "Error: Это канал, а не группа"
+        return result, None
 
     except InviteRequestSentError:
         result = "Error: До сих пор не принят запрос на вступление"
+        return result, None
 
     except UsernameNotOccupiedError:
         result = "Error: Указанный чат не существует"
+        return result, None
 
     except SlowModeWaitError as e:
         # Telethon exposes .seconds on Flood/SlowMode waits; fallback to str(e)
@@ -337,6 +420,7 @@ async def send_setting(
                 f"Error: Слишком рано отправляется (подождать {wait_text}). "
                 "Поставьте больше паузу после предыдущих отправок в расписании."
             )
+        return result, None
 
     except ValueError as e:
         # Handle media group errors and other ValueError cases
@@ -348,6 +432,7 @@ async def send_setting(
             result = "Error: Указанный чат не существует"
         else:
             result = f"Error: {e}"
+        return result, None
 
     except RPCError as e:
         # Handle cases where Telegram requires Stars to post/forward into the target chat
@@ -377,8 +462,9 @@ async def send_setting(
             result = "Error: Нет прав для отправки изображений в этот чат"
         else:
             result = f"Error sending message: {e}"
+        return result, None
 
-    return result
+    return result, None
 
 
 def handle_slow_mode_error(client: Client, setting: Setting, wait_seconds: int) -> str:
@@ -439,18 +525,73 @@ def handle_slow_mode_error(client: Client, setting: Setting, wait_seconds: int) 
         )
 
 
+def _normalize_channel_id(channel_id: str) -> str:
+    """Normalize channel ID by removing -100 prefix for private channels."""
+    return channel_id[4:] if channel_id.startswith("-100") else channel_id
+
+
+def _build_query_string(
+    thread_id: int | None = None,
+    comment_id: int | None = None,
+) -> str:
+    """Build query string for Telegram links."""
+    query_params = []
+    if thread_id:
+        query_params.append(f"thread={thread_id}")
+
+    query_string = "&".join(query_params)
+    return "?" + query_string if query_string else ""
+
+
+async def _generate_message_link(
+    chat_id: str,
+    message_id: int,
+    topic_id: int | None = None,
+    account_app=None,
+) -> str | None:
+    """
+    Generate Telegram message link.
+
+    Returns link string or None if cannot generate.
+    """
+    try:
+        # Try to resolve entity to get username
+        entity = None
+        if account_app:
+            try:
+                entity = await account_app.get_entity(chat_id)
+            except Exception:
+                pass
+
+        if entity and hasattr(entity, "username") and entity.username:
+            # Public chat with username
+            clean_username = entity.username.lstrip("@")
+            if topic_id:
+                return f"https://t.me/{clean_username}/{topic_id}/{message_id}"
+            else:
+                return f"https://t.me/{clean_username}/{message_id}"
+        else:
+            # Private chat - use numeric ID
+            channel_id = _normalize_channel_id(str(chat_id))
+            if topic_id:
+                return f"https://t.me/c/{channel_id}/{topic_id}/{message_id}"
+            else:
+                return f"https://t.me/c/{channel_id}/{message_id}"
+    except Exception as e:
+        logger.warning(f"Failed to generate message link: {e}")
+        return None
+
+
 ALERT_HEADING = "Результаты последней рассылки:"
 
 
-async def publish_stats(errors: dict, fs, client: Client):
+async def publish_stats(
+    errors: dict, fs, client: Client, processed_count: int, successful_count: int
+):
     alert_acc = SenderAccount(fs, client.alert_account)
 
     async with alert_acc.session(revalidate=False):
         app = alert_acc.app
-
-        # Send common errors like no accounts started
-        if "" in errors:
-            await app.send_message(client.alert_chat, errors[""])
 
         # Delete last message if it contains alert heading
         msgs = await app.get_messages(client.alert_chat, limit=1)
@@ -459,17 +600,30 @@ async def publish_stats(errors: dict, fs, client: Client):
             if getattr(last_msg, "message", None) and ALERT_HEADING in last_msg.message:
                 await app.delete_messages(client.alert_chat, [last_msg.id])
 
-        # Calculate error stats from client.settings:
-        # turned off with errors, active with errors
-        turned_off_with_errors = len(
-            [s for s in client.settings if not s.active and s.error]
-        )
-        turned_off_no_errors = len(
-            [s for s in client.settings if not s.active and not s.error]
-        )
+        text = f"{ALERT_HEADING}\n\n"
 
-        if turned_off_with_errors or turned_off_no_errors:
-            text = f"{ALERT_HEADING}\n\n"
+        # If there are critical errors (like authorization failure), show only them
+        if "" in errors:
+            text += f"❌ {errors['']}\n\n"
+            text += f"Подробности в файле настроек: {client.spreadsheet_url}."
+        else:
+            # Добавляем статистику обработанных и успешных отправок
+            if processed_count > 0:
+                text += f"Наступило время для: {processed_count} рассылок\n"
+                text += (
+                    f"Успешных отправок: {successful_count} из {processed_count}\n\n"
+                )
+            else:
+                text += "Наступило время для: 0 рассылок\n\n"
+
+            # Calculate error stats from client.settings:
+            # turned off with errors, active with errors
+            turned_off_with_errors = len(
+                [s for s in client.settings if not s.active and s.error]
+            )
+            turned_off_no_errors = len(
+                [s for s in client.settings if not s.active and not s.error]
+            )
 
             if turned_off_with_errors:
                 text += (
@@ -489,13 +643,12 @@ async def publish_stats(errors: dict, fs, client: Client):
                 f"Подробности в файле настроек: {client.spreadsheet_url}."
             )
 
-            await app.send_message(client.alert_chat, text)
+        await app.send_message(client.alert_chat, text)
 
+        if errors:
             logger.warning("Alert message sent", extra={"errors": errors})
-
-            return
-
-        logger.info("Finished with no errors")
+        else:
+            logger.info("Alert message sent with success statistics")
 
 
 if __name__ == "__main__":

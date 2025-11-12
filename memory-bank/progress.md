@@ -29,6 +29,9 @@
 - Enhanced error handling for various Telegram API errors
 - **Fixed critical ?single parameter issue (2024-10-25)**: URLs with query parameters now properly forward media groups
 - **Fixed send_message parameter bug**: Corrected parameter format in publish_stats function
+- **Enhanced notification system**: Alerts now always include processing statistics (processed/successful counts)
+- **Message links in Google Sheets**: Successful sends now include direct links to published messages
+- **Unified alert reporting**: Authorization failures now integrate with standard report format instead of accumulating separate messages
 - **Added log rotation (2025-10-29)**: Daily rotation with 30-day retention for /var/log/sender.log
 - **Added timestamps to app logs (2025-10-29)**: All application logs now include timestamps for better debugging
 
