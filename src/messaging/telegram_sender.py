@@ -4,9 +4,17 @@ from telethon.errors import RPCError
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.tl.functions.messages import (
     ForwardMessagesRequest,
+    GetHistoryRequest,
     ImportChatInviteRequest,
 )
 from tg.account import Account
+
+
+# Telegram API constants
+MEDIA_GROUP_MAX_SIZE = 10  # Maximum messages in a Telegram media group
+
+# Global album-level cache: (chat_id, grouped_id) -> sorted message IDs
+_GROUPED_MESSAGES_CACHE: dict[tuple[int, int], list[int]] = {}
 
 
 class SenderAccount(Account):
@@ -14,40 +22,55 @@ class SenderAccount(Account):
     with forced joining the group if the peer is not in the chat yet."""
 
     async def _get_grouped_message_ids(self, from_chat_id, message_id, grouped_id):
-        """Retrieve all message IDs in a media group around the given message."""
-        search_window = 50  # Search 50 messages before and after to ensure we get all group messages
-        grouped_messages = []
+        """Retrieve all message IDs in a media group around the given message.
+
+        Media groups contain max MEDIA_GROUP_MAX_SIZE messages. Uses a centered window
+        approach with album-level caching for optimal performance.
+        """
+        # Check cache first (album-level caching)
+        cache_key = (from_chat_id, grouped_id)
+        cached_messages = _GROUPED_MESSAGES_CACHE.get(cache_key)
+        if cached_messages is not None:
+            # Ensure target message is included (defensive programming)
+            if message_id not in cached_messages:
+                cached_messages = sorted(cached_messages + [message_id])
+            return cached_messages
 
         try:
-            # Search backwards from the target message
-            async for msg in self.app.iter_messages(
-                from_chat_id,
+            # Get a centered window of messages around the target message
+            # Start half the window size back to ensure we capture the full group
+            history_request = GetHistoryRequest(
+                peer=from_chat_id,
                 offset_id=message_id,
-                limit=search_window,
-                reverse=True,  # Search backwards (older messages first)
-            ):
-                if hasattr(msg, "grouped_id") and msg.grouped_id == grouped_id:
-                    grouped_messages.append(msg.id)
+                offset_date=None,
+                add_offset=-MEDIA_GROUP_MAX_SIZE,
+                limit=MEDIA_GROUP_MAX_SIZE * 2,
+                max_id=0,
+                min_id=0,
+                hash=0,
+            )
 
-            # Search forwards from the target message (excluding the target message itself)
-            async for msg in self.app.iter_messages(
-                from_chat_id,
-                offset_id=message_id,
-                limit=search_window,
-            ):
-                if (
-                    hasattr(msg, "grouped_id")
-                    and msg.grouped_id == grouped_id
-                    and msg.id != message_id
-                ):  # Don't duplicate the target message
-                    grouped_messages.append(msg.id)
+            result = await self.app(history_request)
 
-            # Remove duplicates and sort to maintain chronological order
-            grouped_messages = sorted(list(set(grouped_messages)))
+            # Extract messages with matching grouped_id using list comprehension
+            grouped_messages = [
+                msg.id
+                for msg in result.messages
+                if hasattr(msg, "grouped_id") and msg.grouped_id == grouped_id
+            ]
 
-        except ValueError:
-            # If search fails, return empty list
-            pass
+            # Ensure target message is included and sort chronologically
+            if message_id not in grouped_messages:
+                grouped_messages.append(message_id)
+
+            grouped_messages = sorted(grouped_messages)
+
+        except Exception:
+            # Fallback: return just the target message if search fails
+            grouped_messages = [message_id]
+
+        # Cache the result (simple dict - no size limit for now)
+        _GROUPED_MESSAGES_CACHE[cache_key] = grouped_messages
 
         return grouped_messages
 
@@ -103,12 +126,8 @@ class SenderAccount(Account):
             grouped_messages = await self._get_grouped_message_ids(
                 from_chat_id, message_id, source_message.grouped_id
             )
-            if not grouped_messages:
-                # If no other grouped messages found, just forward the single message
-                # This handles cases where the media group might be incomplete or single-item
-                message_ids = [message_id]
-            else:
-                message_ids = sorted(grouped_messages)
+            # Always include the original message_id in case it wasn't found in the search
+            message_ids = sorted(list(set(grouped_messages + [message_id])))
 
             # For media groups, captions are attached to the media messages themselves,
             # so we don't need to look for separate preceding text messages

@@ -12,11 +12,11 @@ RUN --mount=from=ghcr.io/astral-sh/uv:latest,source=/uv,target=/bin/uv \
     uv pip install --no-cache-dir --system -r requirements.txt
 
 # Copy project files
-COPY src ./src
 COPY clients.yaml .
 COPY google-service-account.json .
 COPY .env .
 COPY run.sh sender.logrotate .
+COPY src ./src
 
 # Set PYTHONPATH to include src directory
 ENV PYTHONPATH=/app/src

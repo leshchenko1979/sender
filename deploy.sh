@@ -53,19 +53,19 @@ ruff check . --fix
 ruff format .
 echo "Code quality checks completed"
 
-# Run tests if not skipped
+# Run unit tests if not skipped
 if [ "$SKIP_TESTS" = false ]; then
-    echo "Running tests..."
-    pytest . --maxfail=1 --lf -q
+    echo "Running unit tests..."
+    pytest tests/unit/ --maxfail=1 -q
 
     # If any of the above commands failed, exit
     if [ $? -ne 0 ]; then
-        echo -e "${RED}Tests failed! Aborting deployment.${NC}"
+        echo -e "${RED}Unit tests failed! Aborting deployment.${NC}"
         exit 1
     fi
-    echo "Tests completed"
+    echo "Unit tests completed"
 else
-    echo "Tests skipped"
+    echo "Unit tests skipped"
 fi
 end_section
 

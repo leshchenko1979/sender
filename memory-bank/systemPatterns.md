@@ -31,8 +31,10 @@ async def send_message(self, chat_id, text, reply_to_msg_id=None):
 ### Media Group Handling
 - Detects grouped messages by `grouped_id` attribute
 - Forwards entire media groups together
-- Searches for related messages in a 20-message window
+- Uses optimized centered window approach (20-message window) with global caching
+- **Global Album-Level Caching**: Prevents redundant API calls for same media groups
 - **URL Query Parameter Support**: Strips query parameters (like `?single`) before URL parsing to ensure media groups are properly detected and forwarded
+- **Real-World Validation**: Integration tests confirm complete forwarding with captions preserved
 
 ### Error Recovery
 - **Slow Mode**: Auto-adjusts cron schedules for all settings in the same chat
