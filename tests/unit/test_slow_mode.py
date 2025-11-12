@@ -94,6 +94,10 @@ class TestHandleSlowModeError:
         # Schedules should not be changed
         assert self.setting1.schedule == "0 */3 * * *"
         assert self.setting2.schedule == "0 */4 * * *"
+        # Error messages should be set on all related settings
+        assert "Обнаружен slow mode в чате" in self.setting1.error
+        assert "Обнаружен slow mode в чате" in self.setting2.error
+        assert "ожидание: 1 час" in self.setting1.error
         self.client.update_settings_in_gsheets.assert_called_once_with(
             ["schedule", "error", "link"]
         )

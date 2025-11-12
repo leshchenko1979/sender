@@ -15,6 +15,8 @@ The system follows a client-settings pattern inside a single `src/` package:
 - `messaging.sender.send_setting` encapsulates send/forward logic and media group handling
 - `messaging.error_handlers.handle_slow_mode_error` centralizes schedule auto-adjustment
 - `core.config.get_settings()` exposes validated environment variables to all packages
+- `monitoring.stats_publisher.AlertManager` encapsulates alert account management and publishing
+- `cli.create_sender_account` centralizes account creation with proper credentials
 
 ## Key Design Patterns
 
@@ -37,9 +39,16 @@ async def send_message(self, chat_id, text, reply_to_msg_id=None):
 - **Real-World Validation**: Integration tests confirm complete forwarding with captions preserved
 
 ### Error Recovery
-- **Slow Mode**: Auto-adjusts cron schedules for all settings in the same chat
+- **Slow Mode**: Auto-adjusts cron schedules for all settings in the same chat, always provides user feedback in Google Sheets (Russian messages)
 - **Permission Errors**: Attempts to join chat and retry
 - **Media Errors**: Handles incomplete media groups gracefully
+
+### Alert Account Management
+- **AlertManager Class**: Dedicated class for alert account lifecycle management
+- **Separate Authentication**: Alert accounts handled separately from main account collection to avoid session conflicts
+- **Centralized Account Creation**: `create_sender_account` function provides consistent account instantiation
+- **Revalidate on Use**: Alert accounts use `revalidate=True` for on-demand authentication
+- **Clean Separation**: Alert publishing logic isolated from account management concerns
 
 ### Configuration Flow
 1. `core.config.get_settings()` loads `.env` once via `pydantic-settings`

@@ -12,13 +12,17 @@
 - ✅ Slow mode auto-adjustment
 - ✅ Supabase logging integration
 - ✅ Log rotation and retention (30 days)
+- ✅ Alert account integration with separate authentication
+- ✅ AccountCollection with proper containment checking
 - ✅ Test structure (unit + integration tests) with documentation in memory-bank
 
 ## Current Implementation
-- **SenderAccount**: Handles all Telegram operations with auto-join
-- **Client Management**: Loads settings from Google Sheets
+- **SenderAccount**: Handles all Telegram operations with auto-join and proper API credentials
+- **AlertManager**: Dedicated class for alert account lifecycle and publishing operations
+- **Client Management**: Loads settings from Google Sheets with alert account support
 - **Error Recovery**: Comprehensive error handling with user-friendly messages
 - **Schedule Management**: Auto-adjustment for slow mode violations
+- **Account Creation**: Centralized `create_sender_account` function for consistent instantiation
 
 ## Known Issues
 - **Fixed (2025-11-12)**: Media group caption forwarding issue - text/captions now preserved when forwarding media groups
@@ -26,6 +30,14 @@
 - **Verified (2025-11-12)**: Real-world media group forwarding tested and confirmed working
 
 ## Recent Changes
+- **Slow Mode Error Visibility Enhancement (2025-11-12)**: Modified `handle_slow_mode_error` to always display Russian error messages in Google Sheets when slow mode is detected, even when schedules don't need adjustment
+- **Improved User Feedback**: Users now see informational messages like "Обнаружен slow mode в чате, но расписания уже оптимальны" in Google Sheets for better transparency
+- **AccountCollection Fix (2025-11-12)**: Added missing `__contains__` method to tg library AccountCollection class to properly support `key in collection` operations
+- **Alert Account Separation (2025-11-12)**: Removed alert accounts from main AccountCollection to prevent authentication conflicts during session startup
+- **API Credentials Parameter Fix (2025-11-12)**: Corrected parameter order in SenderAccount constructors (fs, phone, filename, api_id, api_hash)
+- **Datetime Logging Enhancement (2025-11-12)**: Added explicit timestamp formatting to all application logs for improved debugging
+- **Log Management (2025-11-12)**: Cleaned existing log files on VDS server and verified proper log rotation functionality
+- **Code Cleanup (2025-11-12)**: Removed unused `_find_preceding_text_message` function and simplified account lookup logic
 - **Integration Test Fix (2025-11-12)**: Fixed `test_caption_forward.py` to properly set API credentials as environment variables, enabling real Telegram API testing
 - **Grouped Message Optimization Validation (2025-11-12)**: Verified global caching and centered window approach works correctly with real API calls
 - **Media Group Forwarding Verification (2025-11-12)**: Confirmed 4-message media groups are forwarded completely with captions preserved

@@ -101,13 +101,20 @@ async def process_client(app_settings, fs, client: Client):
     client.update_settings_in_gsheets(["active", "error", "link"])
 
 
+def create_sender_account(fs, phone, api_id, api_hash):
+    """Centralized account creation function."""
+    return SenderAccount(
+        fs=fs,
+        phone=phone,
+        api_id=api_id,
+        api_hash=api_hash,
+    )
+
+
 def set_up_accounts(app_settings, fs, settings: list[Setting], client: Client = None):
     accounts_dict = {
-        setting.account: SenderAccount(
-            fs=fs,
-            phone=setting.account,
-            api_id=app_settings.api_id,
-            api_hash=app_settings.api_hash,
+        setting.account: create_sender_account(
+            fs, setting.account, app_settings.api_id, app_settings.api_hash
         )
         for setting in settings
         if setting.active

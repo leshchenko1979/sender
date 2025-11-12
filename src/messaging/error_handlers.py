@@ -3,7 +3,11 @@ from typing import Iterable
 
 from ..core.clients import Client
 from ..core.settings import Setting
-from ..scheduling.cron_utils import adjust_cron_interval, format_schedule_change_message
+from ..scheduling.cron_utils import (
+    adjust_cron_interval,
+    format_schedule_change_message,
+    humanize_seconds,
+)
 
 
 def handle_slow_mode_error(client: Client, setting: Setting, wait_seconds: int) -> str:
@@ -47,19 +51,31 @@ def handle_slow_mode_error(client: Client, setting: Setting, wait_seconds: int) 
             )
             updated_count += 1
 
-    # Step 4: Update Google Sheets with new schedules and errors
-    client.update_settings_in_gsheets(["schedule", "error", "link"])
-
+    # Step 4: Set error messages and update Google Sheets
     if updated_count > 0:
-        return (
+        # Schedules were adjusted - error messages already set above
+        result_message = (
             f"Schedule auto-adjusted to every {required_hours} hours "
             f"for {updated_count} settings in chat {setting.chat_id}"
         )
     else:
-        return (
+        # No adjustments needed, but still set informational error messages
+        humanized_wait = humanize_seconds(wait_seconds)
+        error_message = (
+            f"Обнаружен slow mode в чате, но расписания уже оптимальны "
+            f"(ожидание: {humanized_wait}). "
+            f"Проверьте {len(related_settings)} настроек для этого чата."
+        )
+        for s in related_settings:
+            s.error = error_message
+
+        result_message = (
             f"No schedule adjustments needed - current intervals already sufficient "
             f"for {len(related_settings)} settings in chat {setting.chat_id}"
         )
+
+    client.update_settings_in_gsheets(["schedule", "error", "link"])
+    return result_message
 
 
 def _related_active_settings(

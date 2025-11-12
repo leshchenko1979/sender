@@ -1,28 +1,15 @@
 # Active Context
 
 ## Current Focus
-Integration test stabilization and API optimization validation.
+Slow mode error handling improvements and Google Sheets error visibility enhancement.
 
 ## Key Implementation Details
-- Fixed integration test to work with proper API credential handling
-- Validated optimized grouped message retrieval with real Telegram API calls
-- Ensured media group forwarding preserves captions and includes all messages
-- Verified global caching implementation for grouped message lookups
+- Enhanced slow mode error handling to always display error messages in Google Sheets, even when schedules don't need adjustment
+- Error messages are now shown in Russian for better user experience
+- Comprehensive error visibility ensures users are informed of all slow mode detections
 
 ## Recent Changes (2025-11-12)
-- **Integration Test Fix**: Fixed `test_caption_forward.py` to properly set API credentials as environment variables for tg library
-- **API Credential Handling**: Updated test to use environment variables instead of constructor parameters
-- **Grouped Message Optimization**: Validated global caching and centered window approach for media group retrieval
-- **Real-World Testing**: Successfully forwarded complete 4-message media groups with captions preserved
-- **Test Suite Status**: All 94 unit tests passing, integration test now functional with real API calls
-- **Docker Optimization**: Removed redundant `pip install -e .` step, using direct PYTHONPATH approach
-- **Deployment Visual Enhancement**: Added ANSI colors, section timing, and progress indicators
-- **Log Cleanup**: Suppressed macOS tar extended attributes warnings and logrotate debug output
-- **Build Efficiency**: Separated dependency installation from package installation for better caching
-- Dependencies managed with uv via `requirements.txt`
-- Dockerfile installs the package via `pip install .` and runs the new module entrypoint
-- Deployment script packages `src/`, `requirements.txt`, and supporting assets
-- Added `link` field to Setting model for storing message links in separate Google Sheets column
-- Links now appear in dedicated column instead of being appended to error column
-- Success timestamps now use Moscow timezone (Europe/Moscow) to match cron schedule timezone
-- Added backward compatibility test for loading settings with fewer columns than model fields
+- **Slow Mode Error Visibility Fix**: Modified `handle_slow_mode_error` to always set error messages in Google Sheets when slow mode is detected, regardless of whether schedule adjustments are needed
+- **Russian Error Messages**: Error messages for slow mode issues are now displayed in Russian for better user understanding
+- **Improved User Feedback**: Users now see informational messages like "Обнаружен slow mode в чате, но расписания уже оптимальны" in Google Sheets
+- **Test Updates**: Updated unit tests to verify error messages are properly set in all slow mode scenarios
