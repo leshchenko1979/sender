@@ -13,9 +13,6 @@ class SenderAccount(Account):
     """Defines methods for sending and forwarding messages
     with forced joining the group if the peer is not in the chat yet."""
 
-    def __init__(self, fs, account_id, api_id=None, api_hash=None):
-        super().__init__(fs, account_id, api_id=api_id, api_hash=api_hash)
-
     async def _get_grouped_message_ids(self, from_chat_id, message_id, grouped_id):
         """Retrieve all message IDs in a media group around the given message."""
         search_window = 50  # Search 50 messages before and after to ensure we get all group messages
@@ -111,28 +108,10 @@ class SenderAccount(Account):
                 # This handles cases where the media group might be incomplete or single-item
                 message_ids = [message_id]
             else:
-                # For media groups, find the message that contains the caption
-                # In Telegram, caption is usually attached to the last message in the group
-                all_grouped_ids = sorted(grouped_messages)
+                message_ids = sorted(grouped_messages)
 
-                # Get all messages in the group to find the one with caption
-                group_messages = await self.app.get_messages(
-                    from_chat_id, ids=all_grouped_ids
-                )
-
-                # Find message with caption (non-empty text)
-                caption_message = None
-                for msg in group_messages:
-                    if msg and hasattr(msg, "text") and msg.text:
-                        caption_message = msg
-                        break
-
-                # If found message with caption, forward only that one
-                # Otherwise, forward the entire group as fallback
-                if caption_message:
-                    message_ids = [caption_message.id]
-                else:
-                    message_ids = all_grouped_ids
+            # For media groups, captions are attached to the media messages themselves,
+            # so we don't need to look for separate preceding text messages
         else:
             message_ids = [message_id]
 
