@@ -92,7 +92,7 @@ async def process_client(fs, client: Client):
 
     await publish_stats(errors, fs, client, processed_count, successful_count)
 
-    client.update_settings_in_gsheets(["active", "error"])
+    client.update_settings_in_gsheets(["active", "error", "link"])
 
 
 def set_up_accounts(fs, settings: list[Setting]):

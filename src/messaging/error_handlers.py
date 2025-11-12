@@ -48,7 +48,7 @@ def handle_slow_mode_error(client: Client, setting: Setting, wait_seconds: int) 
             updated_count += 1
 
     # Step 4: Update Google Sheets with new schedules and errors
-    client.update_settings_in_gsheets(["schedule", "error"])
+    client.update_settings_in_gsheets(["schedule", "error", "link"])
 
     if updated_count > 0:
         return (

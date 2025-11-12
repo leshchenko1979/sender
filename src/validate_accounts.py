@@ -2,7 +2,11 @@ import asyncio
 from logging import ERROR, getLogger
 
 import supabase
-from telethon.errors import FloodWaitError, PasswordHashInvalidError, PhoneCodeInvalidError
+from telethon.errors import (
+    FloodWaitError,
+    PasswordHashInvalidError,
+    PhoneCodeInvalidError,
+)
 from tg.account import Account
 from tg.supabasefs import SupabaseTableFileSystem
 

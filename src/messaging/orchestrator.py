@@ -2,6 +2,7 @@ import datetime
 import logging
 import traceback
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from ..core.clients import Client
 from ..core.settings import Setting
@@ -68,8 +69,10 @@ async def process_setting_outer(
         if was_processed:
             was_successful = False
     elif "successfully" in result.lower():
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        error_text = f"ОК: {timestamp}"
+        moscow_tz = ZoneInfo("Europe/Moscow")
+        timestamp = datetime.datetime.now(moscow_tz).strftime("%Y-%m-%d %H:%M:%S")
+        setting.error = f"ОК: {timestamp}"
+        setting.link = ""
 
         # Try to generate link to the published message
         if (
@@ -91,12 +94,11 @@ async def process_setting_outer(
                     account_app=acc.app,
                 )
                 if link:
-                    error_text += f" - {link}"
+                    setting.link = link
             except Exception:
-                # If link generation fails, just use timestamp
+                # If link generation fails, leave link empty
                 pass
 
-        setting.error = error_text
         was_successful = True
 
     return was_processed, was_successful

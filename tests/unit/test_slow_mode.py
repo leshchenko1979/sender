@@ -46,7 +46,7 @@ class TestHandleSlowModeError:
         assert "Schedule auto-adjusted to every 2 hours" in result
         assert self.setting1.schedule != "*/30 * * * *"  # Should be changed
         self.client.update_settings_in_gsheets.assert_called_once_with(
-            ["schedule", "error"]
+            ["schedule", "error", "link"]
         )
 
     def test_multiple_settings_same_chat(self):
@@ -64,7 +64,7 @@ class TestHandleSlowModeError:
             self.setting3.schedule == "*/30 * * * *"
         )  # Should NOT be changed (different chat)
         self.client.update_settings_in_gsheets.assert_called_once_with(
-            ["schedule", "error"]
+            ["schedule", "error", "link"]
         )
 
     def test_no_active_settings_same_chat(self):
@@ -95,7 +95,7 @@ class TestHandleSlowModeError:
         assert self.setting1.schedule == "0 */3 * * *"
         assert self.setting2.schedule == "0 */4 * * *"
         self.client.update_settings_in_gsheets.assert_called_once_with(
-            ["schedule", "error"]
+            ["schedule", "error", "link"]
         )
 
     def test_round_up_to_hours(self):
@@ -147,7 +147,7 @@ class TestHandleSlowModeError:
 
         # Should call update_settings_in_gsheets with schedule and error fields
         self.client.update_settings_in_gsheets.assert_called_once_with(
-            ["schedule", "error"]
+            ["schedule", "error", "link"]
         )
 
     def test_preserve_cron_constraints(self):

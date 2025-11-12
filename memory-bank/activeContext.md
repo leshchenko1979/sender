@@ -14,3 +14,7 @@ Codebase consolidation into a single `src/` package with clear module boundaries
 - Dockerfile installs the package via `pip install .` and runs the new module entrypoint
 - Deployment script packages `src/`, `pyproject.toml`, and supporting assets
 - Unit test suite updated to new import paths; all 93 tests pass locally
+- Added `link` field to Setting model for storing message links in separate Google Sheets column
+- Links now appear in dedicated column instead of being appended to error column
+- Success timestamps now use Moscow timezone (Europe/Moscow) to match cron schedule timezone
+- Added backward compatibility test for loading settings with fewer columns than model fields

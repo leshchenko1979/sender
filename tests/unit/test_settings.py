@@ -65,9 +65,9 @@ def test_load_settings(mock_get_worksheet):
     # Arrange
     mock_worksheet = Mock()
     mock_worksheet.get_all_values.return_value = [
-        ["active", "account", "schedule", "chat_id", "text"],
-        ["1", "7 123 456 78 90", "0 5 * * *", "chat_id_1", "Hello!"],
-        [False, "8 123 456 78 90", "0 6 * * *", "chat_id_2", "Hi there!"],
+        ["active", "account", "schedule", "chat_id", "text", "error", "link"],
+        ["1", "7 123 456 78 90", "0 5 * * *", "chat_id_1", "Hello!", "", ""],
+        [False, "8 123 456 78 90", "0 6 * * *", "chat_id_2", "Hi there!", "", ""],
     ]
     mock_get_worksheet.return_value = mock_worksheet
 
@@ -86,6 +86,47 @@ def test_load_settings(mock_get_worksheet):
     assert all(isinstance(setting, Setting) for setting in settings)
     assert settings[0].account == "71234567890"
     assert settings[1].account == "71234567890"
+    # Check default values for error and link fields
+    assert settings[0].error == ""
+    assert settings[0].link == ""
+    assert settings[1].error == ""
+    assert settings[1].link == ""
+
+
+# Test backward compatibility - loading with fewer columns than model fields
+@patch("src.core.clients.get_worksheet")
+def test_load_settings_backward_compatibility(mock_get_worksheet):
+    """Test that loading works when Google Sheets has fewer columns than model fields."""
+    # Arrange
+    mock_worksheet = Mock()
+    # Only 5 columns (old format without error and link)
+    mock_worksheet.get_all_values.return_value = [
+        ["active", "account", "schedule", "chat_id", "text"],
+        ["1", "7 123 456 78 90", "0 5 * * *", "chat_id_1", "Hello!"],
+        [False, "8 123 456 78 90", "0 6 * * *", "chat_id_2", "Hi there!"],
+    ]
+    mock_get_worksheet.return_value = mock_worksheet
+
+    client = Client(
+        name="abc",
+        spreadsheet_url="https://example.com/spreadsheet",
+        alert_account="9 123 456 78 90",
+        alert_chat="chat_id_3",
+    )
+
+    # Act
+    settings = client.load_settings()
+
+    # Assert - should still work with default values
+    assert len(settings) == 2
+    assert all(isinstance(setting, Setting) for setting in settings)
+    assert settings[0].account == "71234567890"
+    assert settings[1].account == "71234567890"
+    # Default values should be used for missing columns
+    assert settings[0].error == ""
+    assert settings[0].link == ""
+    assert settings[1].error == ""
+    assert settings[1].link == ""
 
 
 # Test get_worksheet function

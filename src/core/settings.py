@@ -14,6 +14,7 @@ class Setting(pydantic.BaseModel):
     chat_id: str
     text: str
     error: str = ""
+    link: str = ""
 
     def __str__(self):
         return f"{self.chat_id} {self.text[:100]}"
