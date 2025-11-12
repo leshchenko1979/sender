@@ -1,5 +1,33 @@
 #!/bin/bash
 
+# ANSI color codes
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+MAGENTA='\033[0;35m'
+CYAN='\033[0;36m'
+WHITE='\033[1;37m'
+NC='\033[0m' # No Color
+
+# Timing function
+start_time=$(date +%s)
+section_start_time=0
+
+start_section() {
+    section_start_time=$(date +%s)
+    echo -e "${BLUE}┌─────────────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${BLUE}│${NC} ${WHITE}$1${NC}"
+    echo -e "${BLUE}└─────────────────────────────────────────────────────────────────┘${NC}"
+}
+
+end_section() {
+    local end_time=$(date +%s)
+    local duration=$((end_time - section_start_time))
+    echo -e "${GREEN}✓ Completed in ${duration}s${NC}"
+    echo ""
+}
+
 # Parse command line arguments
 SKIP_TESTS=false
 while getopts "s" opt; do
@@ -11,50 +39,49 @@ done
 
 set -e  # Exit on any error
 
-# Load environment variables
+# Local Preparation
+start_section "🔧 Local Preparation"
 if [ ! -f .env ]; then
-    echo "Error: .env file not found!"
+    echo -e "${RED}Error: .env file not found!${NC}"
     exit 1
 fi
 
 source .env
+echo "Environment loaded"
 
-echo "Running code quality checks..."
-
-# Run isort to sort imports
-echo "Running isort..."
-isort .
-
-# Run black for code formatting
-echo "Running black..."
-black .
+ruff check . --fix
+ruff format .
+echo "Code quality checks completed"
 
 # Run tests if not skipped
 if [ "$SKIP_TESTS" = false ]; then
     echo "Running tests..."
-    pytest . -v
+    pytest . --maxfail=1 --lf -q
 
     # If any of the above commands failed, exit
     if [ $? -ne 0 ]; then
-        echo "Tests failed! Aborting deployment."
+        echo -e "${RED}Tests failed! Aborting deployment.${NC}"
         exit 1
     fi
+    echo "Tests completed"
 else
-    echo "Skipping tests..."
+    echo "Tests skipped"
 fi
+end_section
 
-# Create project directory
+# Package Deployment
+start_section "📦 Package Deployment"
 echo "Creating project directory..."
 ssh ${REMOTE_USER}@${REMOTE_HOST} "mkdir -p /data/projects/sender"
 
-# Create package archive
 echo "Creating Python package archive..."
 TEMP_DIR=$(mktemp -d)
 if [ -f "$TEMP_DIR/sender.tar.gz" ]; then
     rm "$TEMP_DIR/sender.tar.gz"
 fi
 
-tar \
+# Create clean tar archive without macOS metadata
+COPYFILE_DISABLE=1 tar \
     --exclude='venv' \
     --exclude='*.pyc' \
     --exclude='__pycache__' \
@@ -71,23 +98,23 @@ tar \
     run.sh \
     sender.logrotate
 
-# Copy and extract Python package
 echo "Copying and extracting Python package..."
 scp "$TEMP_DIR/sender.tar.gz" \
     ${REMOTE_USER}@${REMOTE_HOST}:/data/projects/sender/
 
 ssh ${REMOTE_USER}@${REMOTE_HOST} \
     "cd /data/projects/sender && \
-     tar xzf sender.tar.gz && \
+     tar xzf sender.tar.gz 2>/dev/null && \
      rm sender.tar.gz"
 
 rm -rf "$TEMP_DIR"
+end_section
 
-# Ensure wrapper is executable on VDS
+# Server Configuration
+start_section "⚙️ Server Configuration"
 echo "Ensuring wrapper permissions..."
 ssh ${REMOTE_USER}@${REMOTE_HOST} "chmod +x /data/projects/sender/run.sh"
 
-# Build Docker image
 echo "Building Docker image..."
 ssh ${REMOTE_USER}@${REMOTE_HOST} '
     cd /data/projects/sender
@@ -102,22 +129,17 @@ ssh ${REMOTE_USER}@${REMOTE_HOST} '
     docker build -t sender -f Dockerfile .
 '
 
-# Set up log rotation
 echo "Setting up log rotation..."
 ssh ${REMOTE_USER}@${REMOTE_HOST} '
     # Copy logrotate configuration
     cp /data/projects/sender/sender.logrotate /etc/logrotate.d/sender
-    
-    # Test logrotate configuration
-    logrotate -d /etc/logrotate.d/sender
-    
+
     echo "Log rotation configured for /var/log/sender.log"
     echo "  - Daily rotation"
     echo "  - Keep 30 days of logs"
     echo "  - Compress old logs"
 '
 
-# Set up cron jobs
 echo "Setting up cron jobs..."
 ssh ${REMOTE_USER}@${REMOTE_HOST} '
     # Get current crontab without sender jobs and without any existing CRON_TZ lines
@@ -125,13 +147,23 @@ ssh ${REMOTE_USER}@${REMOTE_HOST} '
     CRON_TZ_LINE="CRON_TZ=Europe/Moscow"
     CRON_LINE="0 9-21 * * * bash -lc \"cd /data/projects/sender && ./run.sh\""
 
-    { 
+    {
         echo "$TEMP_CRONTAB"
         echo "$CRON_TZ_LINE"
         echo "$CRON_LINE"
     } | crontab -
 '
+end_section
 
-echo "Deployment completed successfully!"
+# Calculate total deployment time
+end_time=$(date +%s)
+total_duration=$((end_time - start_time))
+current_time=$(date '+%Y-%m-%d %H:%M:%S')
+
+echo -e "${CYAN}┌─────────────────────────────────────────────────────────────────┐${NC}"
+echo -e "${CYAN}│${NC} ${WHITE}🎉 Deployment completed successfully!${NC}"
+echo -e "${CYAN}│${NC} ${GREEN}Total deployment time: ${total_duration}s${NC}"
+echo -e "${CYAN}│${NC} ${YELLOW}Finished at: ${current_time}${NC}"
+echo -e "${CYAN}└─────────────────────────────────────────────────────────────────┘${NC}"
 
 

@@ -23,6 +23,10 @@
 - **Fixed (2025-11-12)**: Media group caption forwarding issue - text/captions now preserved when forwarding media groups
 
 ## Recent Changes
+- **Docker Build Optimization (2025-11-12)**: Removed redundant package installation, improved layer caching efficiency
+- **Deployment Script Enhancement (2025-11-12)**: Added comprehensive visual feedback with ANSI colors, section timing, and progress indicators
+- **Log Output Cleanup (2025-11-12)**: Suppressed macOS tar extended attributes warnings and logrotate debug output
+- **Build Process Streamlining**: Separated dependency installation from package installation for better Docker caching
 - Added forum topic support (chat_id/topic_id format)
 - Implemented media group forwarding
 - Added slow mode auto-adjustment

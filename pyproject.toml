@@ -7,27 +7,10 @@ name = "sender"
 version = "0.1.0"
 description = "Telegram message automation system"
 requires-python = ">=3.10"
-dependencies = [
-    "croniter",
-    "gspread",
-    "icontract",
-    "more-itertools",
-    "pydantic",
-    "pydantic-settings",
-    "pyyaml",
-    "reretry",
-    "supabase",
-    "telethon",
-    "tg @ git+https://github.com/leshchenko1979/tg.git",
-]
+dynamic = ["dependencies"]
 
-[project.optional-dependencies]
-dev = [
-    "black",
-    "isort",
-    "pytest",
-    "ruff",
-]
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
 
 [tool.setuptools]
 package-dir = {"" = "src"}

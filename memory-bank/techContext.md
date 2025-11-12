@@ -58,6 +58,15 @@ Choose one of the Google authentication methods above. The file-based approach i
 - Cron job deployment scripts
 - Supabase file system for session storage
 
+## Deployment Features
+- **Enhanced deploy.sh**: Comprehensive visual feedback with ANSI colors and section timing
+- **Three-Phase Deployment**: Local Preparation → Package Deployment → Server Configuration
+- **Clean Logging**: Suppressed verbose output from tar and logrotate operations
+- **Docker Optimization**: Efficient layer caching with separated dependency installation
+- **Progress Indicators**: Real-time feedback with emojis and colored status messages
+- **Timing Information**: Individual section timing plus total deployment duration
+- **Completion Summary**: Shows total time and exact completion timestamp
+
 ## Logging and Monitoring
 - **Primary Log Location**: `/var/log/sender.log` (VDS)
 - **Log Rotation**: Daily rotation with 30-day retention

@@ -1,15 +1,19 @@
 # Active Context
 
 ## Current Focus
-Codebase consolidation into a single `src/` package with clear module boundaries and centralized configuration for environment management.
+Optimization of deployment process and Docker build efficiency.
 
 ## Key Implementation Details
-- Created `src/` with dedicated subpackages: `core`, `messaging`, `infrastructure`, `monitoring`, `scheduling`, `utils`
-- Split legacy `message_processor.py` into `messaging/orchestrator.py`, `messaging/sender.py`, and `messaging/error_handlers.py`
-- Introduced `core/config.py` using `pydantic-settings` to load `.env` once and expose typed settings
-- Updated entrypoints to run via `python -m src.cli`; reorganized tests under `tests/unit/` with shared fixtures
+- Streamlined Docker build process by removing unnecessary package installation
+- Enhanced deploy.sh with comprehensive visual feedback and timing information
+- Eliminated verbose log output from deployment tools (tar warnings, logrotate debug)
+- Maintained robust error handling while improving user experience
 
 ## Recent Changes (2025-11-12)
+- **Docker Optimization**: Removed redundant `pip install -e .` step, using direct PYTHONPATH approach
+- **Deployment Visual Enhancement**: Added ANSI colors, section timing, and progress indicators
+- **Log Cleanup**: Suppressed macOS tar extended attributes warnings and logrotate debug output
+- **Build Efficiency**: Separated dependency installation from package installation for better caching
 - Dependencies now declared in `pyproject.toml`; removed `requirements.txt`
 - Dockerfile installs the package via `pip install .` and runs the new module entrypoint
 - Deployment script packages `src/`, `pyproject.toml`, and supporting assets

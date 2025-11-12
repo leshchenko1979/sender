@@ -56,6 +56,12 @@ async def send_message(self, chat_id, text, reply_to_msg_id=None):
 5. Execute send/forward operation
 6. Handle errors with appropriate recovery
 
+### Deployment Flow
+1. **Local Preparation**: Code quality checks, environment validation, optional testing
+2. **Package Deployment**: Create and transfer clean tar archive, extract on server
+3. **Server Configuration**: Set permissions, build Docker image, configure logging and cron
+4. **Clean Logging**: Suppress verbose output from build tools for better user experience
+
 ### Schedule Management
 - Uses croniter for schedule checking
 - Moscow timezone for schedule calculations
