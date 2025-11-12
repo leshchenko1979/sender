@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta
-from math import ceil
 
 import croniter
 

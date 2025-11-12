@@ -1,6 +1,4 @@
-import pytest
-
-from sender import parse_chat_and_topic
+from telegram_utils import parse_chat_and_topic
 
 
 class TestParseChatAndTopic:

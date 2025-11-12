@@ -22,7 +22,11 @@
 - `GOOGLE_SERVICE_ACCOUNT`: Google Sheets credentials (JSON string)
 
 ## File Structure
-- `sender.py`: Main application logic
+- `sender.py`: Main orchestration logic and entry point
+- `telegram_sender.py`: SenderAccount class and Telegram message operations
+- `message_processor.py`: Message processing and sending logic
+- `telegram_utils.py`: Telegram utility functions and URL parsing
+- `stats_publisher.py`: Statistics publishing and alert functionality
 - `clients.py`: Client and Google Sheets integration
 - `settings.py`: Setting model and cron utilities
 - `clients.yaml`: Client configuration

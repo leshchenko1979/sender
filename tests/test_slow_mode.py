@@ -1,6 +1,4 @@
-from unittest.mock import MagicMock, Mock, patch
-
-import pytest
+from unittest.mock import Mock
 
 from clients import Client
 from sender import handle_slow_mode_error
@@ -114,7 +112,7 @@ class TestHandleSlowModeError:
 
     def test_error_message_formatting(self):
         """Test that error messages are properly formatted."""
-        result = handle_slow_mode_error(self.client, self.setting1, 3600)
+        handle_slow_mode_error(self.client, self.setting1, 3600)
 
         # Check that error message contains expected elements
         assert self.setting1.error != ""
@@ -158,7 +156,7 @@ class TestHandleSlowModeError:
         self.setting1.schedule = "*/30 * * * *"  # Every 30 minutes
         self.client.settings = [self.setting1]
 
-        result = handle_slow_mode_error(self.client, self.setting1, 3600)
+        handle_slow_mode_error(self.client, self.setting1, 3600)
 
         # Should preserve day (*), month (*), and weekday (*) constraints
         new_schedule = self.setting1.schedule
