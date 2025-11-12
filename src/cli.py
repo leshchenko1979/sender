@@ -15,10 +15,13 @@ from .messaging.telegram_sender import SenderAccount
 from .monitoring.stats_publisher import publish_stats
 
 # Set up standard Python logging
+import sys
+
 logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] [%(levelname)s] %(name)s: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
+    stream=sys.stdout,
 )
 logger = logging.getLogger(__name__)
 
@@ -50,6 +53,7 @@ def set_up_supabase(app_settings: AppSettings):
 
 
 async def process_client(app_settings, fs, client: Client):
+    accounts = None
     try:
         errors = {}
         processed_count = 0
@@ -58,7 +62,7 @@ async def process_client(app_settings, fs, client: Client):
         settings = client.load_settings()
 
         if any(s.active for s in settings):
-            accounts = set_up_accounts(app_settings, fs, settings)
+            accounts = set_up_accounts(app_settings, fs, settings, client)
             supabase_logs.load_results_for_client(client.name)
 
             async with accounts.session():
@@ -97,18 +101,19 @@ async def process_client(app_settings, fs, client: Client):
     client.update_settings_in_gsheets(["active", "error", "link"])
 
 
-def set_up_accounts(app_settings, fs, settings: list[Setting]):
-    return AccountCollection(
-        {
-            setting.account: SenderAccount(
-                fs, setting.account, app_settings.api_id, app_settings.api_hash
-            )
-            for setting in settings
-            if setting.active
-        },
-        fs,
-        invalid="raise",
-    )
+def set_up_accounts(app_settings, fs, settings: list[Setting], client: Client = None):
+    accounts_dict = {
+        setting.account: SenderAccount(
+            fs=fs,
+            phone=setting.account,
+            api_id=app_settings.api_id,
+            api_hash=app_settings.api_hash,
+        )
+        for setting in settings
+        if setting.active
+    }
+
+    return AccountCollection(accounts_dict, fs=fs, invalid="raise")
 
 
 if __name__ == "__main__":

@@ -7,13 +7,14 @@ from telethon.errors import (
     PasswordHashInvalidError,
     PhoneCodeInvalidError,
 )
-from tg.account import Account
 from tg.supabasefs import SupabaseTableFileSystem
 
-from .core.clients import load_clients
-from .core.config import AppSettings, get_settings
-from .core.settings import Setting
-from .scheduling.cron_utils import humanize_seconds
+from messaging.telegram_sender import SenderAccount
+
+from core.clients import load_clients
+from core.config import AppSettings, get_settings
+from core.settings import Setting
+from scheduling.cron_utils import humanize_seconds
 
 getLogger("httpx").setLevel(ERROR)
 
@@ -46,11 +47,22 @@ async def validate_accs(settings: list[Setting], fs, app_settings: AppSettings):
     if app_settings.alert_account:
         distinct_account_ids.add(app_settings.alert_account)
 
+    # Also include alert accounts from clients
+    clients = load_clients()
+    for client in clients:
+        if hasattr(client, "alert_account") and client.alert_account:
+            distinct_account_ids.add(str(client.alert_account))
+
     for account in distinct_account_ids:
         print("Проверка аккаунта", to_phone_format(account))
         while True:
             try:
-                async with Account(fs, account).session(revalidate=True):
+                async with SenderAccount(
+                    fs,
+                    phone=account,
+                    api_id=app_settings.api_id,
+                    api_hash=app_settings.api_hash,
+                ).session(revalidate=True):
                     print("OK")
                     break
             except (PasswordHashInvalidError, PhoneCodeInvalidError):

@@ -15,14 +15,20 @@ async def publish_stats(
     successful_count: int,
     app_settings=None,
 ):
-    alert_acc = SenderAccount(
-        fs,
-        client.alert_account,
-        app_settings.api_id if app_settings else None,
-        app_settings.api_hash if app_settings else None,
+    logger.info(
+        f"publish_stats called for client {client.name}, alert_account: {repr(client.alert_account)}"
     )
 
-    async with alert_acc.session(revalidate=False):
+    # Alert accounts are handled separately from main accounts collection
+    # They should be pre-authorized using validate_accounts.py
+    alert_acc = SenderAccount(
+        fs=fs,
+        phone=client.alert_account,
+        api_id=app_settings.api_id if app_settings else None,
+        api_hash=app_settings.api_hash if app_settings else None,
+    )
+
+    async with alert_acc.session(revalidate=True):
         app = alert_acc.app
 
         # Delete last message if it contains alert heading

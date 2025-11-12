@@ -74,42 +74,6 @@ class SenderAccount(Account):
 
         return grouped_messages
 
-    async def _find_preceding_text_message(self, from_chat_id, first_media_message_id):
-        """Find a text message immediately preceding a media group that might be related."""
-        try:
-            # Look for messages immediately before the first media message
-            async for msg in self.app.iter_messages(
-                from_chat_id,
-                offset_id=first_media_message_id,
-                limit=5,  # Check up to 5 messages before
-                reverse=True,  # Search backwards (older messages first)
-            ):
-                # Skip messages that are part of the same media group
-                if hasattr(msg, "grouped_id") and msg.grouped_id is not None:
-                    continue
-
-                # Check if this is a text message (has text but no media)
-                if (
-                    hasattr(msg, "text")
-                    and msg.text
-                    and not hasattr(msg, "media")
-                    or msg.media is None
-                ):
-                    # Only include if it's reasonably close (within 10 message IDs)
-                    if first_media_message_id - msg.id <= 10:
-                        return msg.id
-
-                # Stop searching if we find a message that's too old or has media
-                # This prevents including unrelated text messages
-                if first_media_message_id - msg.id > 10:
-                    break
-
-        except ValueError:
-            # If search fails, return None
-            pass
-
-        return None
-
     async def _forward_grouped_or_single(
         self, chat_id, from_chat_id, message_id, reply_to_msg_id=None
     ):
