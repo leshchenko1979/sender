@@ -2,7 +2,7 @@ import logging
 from unittest.mock import Mock, patch
 import pytest
 
-from src.cli import TelegramLoggingHandler
+from src.monitoring.logging_config import TelegramLoggingHandler
 
 
 class TestTelegramLoggingHandler:
@@ -84,7 +84,7 @@ class TestTelegramLoggingHandler:
         assert "🚨 WARNING from test.logger" in formatted
         assert "Test message" in formatted
 
-    @patch("src.cli.urlopen")
+    @patch("src.monitoring.logging_config.urlopen")
     def test_send_to_telegram_success(self, mock_urlopen):
         """Test successful sending to Telegram."""
         mock_response = Mock()
@@ -110,7 +110,7 @@ class TestTelegramLoggingHandler:
         # Check Content-Type header in the headers dict (urllib uses 'Content-type')
         assert req.headers.get("Content-type") == "application/x-www-form-urlencoded"
 
-    @patch("src.cli.urlopen")
+    @patch("src.monitoring.logging_config.urlopen")
     def test_send_to_telegram_failure(self, mock_urlopen):
         """Test handling of Telegram API failures."""
         from urllib.error import URLError
@@ -147,7 +147,7 @@ class TestTelegramLoggingHandler:
                 # Check that error was printed to stderr
                 mock_stderr.write.assert_called()
 
-    @patch("src.cli.urlopen")
+    @patch("src.monitoring.logging_config.urlopen")
     def test_message_length_limit(self, mock_urlopen):
         """Test that long messages are truncated to Telegram's limit."""
         mock_response = Mock()

@@ -1,13 +1,9 @@
 import asyncio
 import logging
-import sys
 import traceback
 from dataclasses import dataclass
 from typing import Optional
-from urllib.request import urlopen, Request
-from urllib.error import URLError
 
-import logfire
 import supabase
 from tg.account import AccountCollection, AccountStartFailed
 from tg.supabasefs import SupabaseTableFileSystem
@@ -18,6 +14,7 @@ from .core.settings import Setting
 from .infrastructure.supabase_logs import SupabaseLogHandler
 from .messaging.orchestrator import process_setting_outer
 from .messaging.telegram_sender import SenderAccount
+from .monitoring.logging_config import setup_logging
 from .monitoring.stats_publisher import publish_stats
 
 # Initialize logger (logging config will be set up in setup_logging function)
@@ -47,61 +44,6 @@ class ProcessingError(ClientProcessingError):
         super().__init__(message)
 
 
-class TelegramLoggingHandler(logging.Handler):
-    """Custom logging handler that sends messages to Telegram."""
-
-    def __init__(self, bot_token: str, chat_id: str):
-        super().__init__()
-        self.bot_token = bot_token
-        self.chat_id = chat_id
-        self.setLevel(logging.WARNING)  # Only log warnings and above
-        self.setFormatter(
-            logging.Formatter(
-                "🚨 %(levelname)s from %(name)s\n%(asctime)s\n%(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
-            )
-        )
-
-    def emit(self, record: logging.LogRecord) -> None:
-        """Send log message to Telegram."""
-        # Only process messages at WARNING level or higher
-        if record.levelno < logging.WARNING:
-            return
-
-        try:
-            message = self.format(record)
-            self._send_to_telegram(message)
-        except Exception as e:
-            # Don't let logging errors crash the application
-            print(f"Failed to send log to Telegram: {e}", file=sys.stderr)
-
-    def _send_to_telegram(self, message: str) -> None:
-        """Send message to Telegram bot API using urllib."""
-        url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
-        data = {
-            "chat_id": self.chat_id,
-            "text": message[:4096],  # Telegram message limit
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True,
-        }
-
-        # Convert data to URL-encoded bytes
-        import urllib.parse
-
-        data_bytes = urllib.parse.urlencode(data).encode("utf-8")
-
-        # Create request with timeout
-        req = Request(url, data=data_bytes, method="POST")
-        req.add_header("Content-Type", "application/x-www-form-urlencoded")
-
-        try:
-            with urlopen(req, timeout=10) as response:
-                if response.status != 200:
-                    raise URLError(f"HTTP {response.status}: {response.reason}")
-        except URLError as e:
-            raise URLError(f"Failed to send Telegram message: {e}")
-
-
 @dataclass
 class AppContext:
     """Application context containing shared dependencies."""
@@ -109,51 +51,6 @@ class AppContext:
     supabase_client: supabase.Client
     supabase_logs: SupabaseLogHandler
     filesystem: SupabaseTableFileSystem
-
-
-def setup_logging(app_settings: AppSettings) -> None:
-    """Set up all logging configuration including standard logging, Logfire, and Telegram."""
-    # Configure standard Python logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="[%(asctime)s] [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        stream=sys.stdout,
-    )
-
-    # Configure Telegram logging handler for warnings and above
-    if app_settings.telegram_bot_token and app_settings.telegram_chat_id:
-        try:
-            telegram_handler = TelegramLoggingHandler(
-                app_settings.telegram_bot_token, app_settings.telegram_chat_id
-            )
-            logging.getLogger().addHandler(telegram_handler)
-            logger.info("Telegram logging handler configured successfully")
-        except Exception as e:
-            logger.warning(f"Failed to configure Telegram logging handler: {e}")
-    elif app_settings.telegram_bot_token or app_settings.telegram_chat_id:
-        logger.info(
-            "Telegram logging partially configured - both TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set"
-        )
-    else:
-        logger.info(
-            "Telegram logging not configured - set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID to enable"
-        )
-
-    # Configure Logfire monitoring if available and not in testing mode
-    if app_settings.testing:
-        logger.info("Testing mode: skipping Logfire configuration")
-        return
-
-    if app_settings.logfire_token:
-        try:
-            logfire.configure(token=app_settings.logfire_token)
-            logfire.install_auto_tracing(modules=["src"], min_duration=0.01)
-            logger.info("Logfire monitoring configured successfully")
-        except Exception as e:
-            logger.warning(f"Failed to configure Logfire: {e}")
-    else:
-        logger.info("LOGFIRE_TOKEN not set, skipping Logfire configuration")
 
 
 async def process_all_clients(app_settings: AppSettings, context: AppContext) -> None:
