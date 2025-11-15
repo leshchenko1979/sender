@@ -14,6 +14,7 @@
 - `pydantic`, `pydantic-settings`: Data modelling and configuration loading
 - `croniter`: Cron schedule parsing
 - `icontract`, `reretry`, `more-itertools`, `tg` (custom account helpers)
+- **HTTP Client**: Uses Python standard library `urllib` (no external HTTP libraries)
 
 ## Environment Variables
 
@@ -25,6 +26,8 @@
 ### Optional Variables
 - `ALERT_ACCOUNT`: Telegram account used for alert reporting
 - Telegram API credentials (`API_ID`, `API_HASH`) consumed by the shared `tg` dependency
+- `TELEGRAM_BOT_TOKEN`: Bot token for Telegram logging handler
+- `TELEGRAM_CHAT_ID`: Chat ID where warning/error messages are sent
 
 ### Environment Loading
 - **Pydantic Settings**: `AppSettings` loads from `.env` file using `SettingsConfigDict(env_file='.env', extra='allow')`
@@ -98,10 +101,10 @@ sender/
 ## Testing Strategy
 
 ### Test Categories
-- **Unit Tests** (94 tests): Fast, isolated tests without external dependencies
+- **Unit Tests** (101 tests): Fast, isolated tests without external dependencies
   - Run in CI/CD pipeline via `deploy.sh`
-  - Execution time: ~0.14s
-  - Coverage: Core logic, validation, utilities
+  - Execution time: ~0.25s
+  - Coverage: Core logic, validation, utilities, and Telegram logging
 - **Integration Tests** (1 test): Real API calls with external dependencies
   - Requires `.env` file with valid credentials
   - Tests actual Telegram message forwarding
@@ -140,7 +143,7 @@ pytest tests/
   - Configuration: `/etc/logrotate.d/sender`
   - Compressed old logs
   - Automatic cleanup
-- **Log Content**: 
+- **Log Content**:
   - Start/finish timestamps for each run
   - Full application stdout/stderr from Docker containers with timestamps
   - Error messages and warnings with timestamps
@@ -154,5 +157,3 @@ pytest tests/
 - **Schedule Management**: Moscow timezone for all cron operations
 - **Media Handling**: Special logic for grouped media messages
 - **Auto-Join**: Proactive chat joining to reduce permission errors
-
-

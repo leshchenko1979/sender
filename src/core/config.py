@@ -32,6 +32,16 @@ class AppSettings(BaseSettings):
     )
     google_service_account: Optional[str] = Field(None, alias="GOOGLE_SERVICE_ACCOUNT")
 
+    # Logfire configuration
+    logfire_token: Optional[str] = Field(None, alias="LOGFIRE_TOKEN")
+
+    # Telegram logging configuration
+    telegram_bot_token: Optional[str] = Field(None, alias="TELEGRAM_BOT_TOKEN")
+    telegram_chat_id: Optional[str] = Field(None, alias="TELEGRAM_CHAT_ID")
+
+    # Testing flag
+    testing: bool = Field(default=False, alias="TESTING")
+
 
 @lru_cache()
 def get_settings() -> AppSettings:

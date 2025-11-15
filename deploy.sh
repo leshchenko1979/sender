@@ -72,7 +72,7 @@ end_section
 # Package Deployment
 start_section "📦 Package Deployment"
 echo "Creating project directory..."
-ssh ${REMOTE_USER}@${REMOTE_HOST} "mkdir -p /data/projects/sender"
+ssh -o ControlMaster=auto -o ControlPath=~/.ssh/master-%r@%h:%p -o ControlPersist=10m ${REMOTE_USER}@${REMOTE_HOST} "mkdir -p /data/projects/sender"
 
 echo "Creating Python package archive..."
 TEMP_DIR=$(mktemp -d)
@@ -99,10 +99,10 @@ COPYFILE_DISABLE=1 tar \
     sender.logrotate
 
 echo "Copying and extracting Python package..."
-scp "$TEMP_DIR/sender.tar.gz" \
+scp -o ControlMaster=auto -o ControlPath=~/.ssh/master-%r@%h:%p -o ControlPersist=10m "$TEMP_DIR/sender.tar.gz" \
     ${REMOTE_USER}@${REMOTE_HOST}:/data/projects/sender/
 
-ssh ${REMOTE_USER}@${REMOTE_HOST} \
+ssh -o ControlMaster=auto -o ControlPath=~/.ssh/master-%r@%h:%p -o ControlPersist=10m ${REMOTE_USER}@${REMOTE_HOST} \
     "cd /data/projects/sender && \
      tar xzf sender.tar.gz 2>/dev/null && \
      rm sender.tar.gz"
@@ -113,10 +113,10 @@ end_section
 # Server Configuration
 start_section "⚙️ Server Configuration"
 echo "Ensuring wrapper permissions..."
-ssh ${REMOTE_USER}@${REMOTE_HOST} "chmod +x /data/projects/sender/run.sh"
+ssh -o ControlMaster=auto -o ControlPath=~/.ssh/master-%r@%h:%p -o ControlPersist=10m ${REMOTE_USER}@${REMOTE_HOST} "chmod +x /data/projects/sender/run.sh"
 
 echo "Building Docker image..."
-ssh ${REMOTE_USER}@${REMOTE_HOST} '
+ssh -o ControlMaster=auto -o ControlPath=~/.ssh/master-%r@%h:%p -o ControlPersist=10m ${REMOTE_USER}@${REMOTE_HOST} '
     cd /data/projects/sender
     # Stop and remove any existing containers in a single atomic operation
     containers=$(docker ps -aq --filter ancestor=sender)
@@ -130,7 +130,7 @@ ssh ${REMOTE_USER}@${REMOTE_HOST} '
 '
 
 echo "Setting up log rotation..."
-ssh ${REMOTE_USER}@${REMOTE_HOST} '
+ssh -o ControlMaster=auto -o ControlPath=~/.ssh/master-%r@%h:%p -o ControlPersist=10m ${REMOTE_USER}@${REMOTE_HOST} '
     # Copy logrotate configuration
     cp /data/projects/sender/sender.logrotate /etc/logrotate.d/sender
 
@@ -141,7 +141,7 @@ ssh ${REMOTE_USER}@${REMOTE_HOST} '
 '
 
 echo "Setting up cron jobs..."
-ssh ${REMOTE_USER}@${REMOTE_HOST} '
+ssh -o ControlMaster=auto -o ControlPath=~/.ssh/master-%r@%h:%p -o ControlPersist=10m ${REMOTE_USER}@${REMOTE_HOST} '
     # Get current crontab without sender jobs and without any existing CRON_TZ lines
     TEMP_CRONTAB=$(crontab -l 2>/dev/null | grep -v "sender" | grep -v -E "^CRON_TZ=" || true)
     CRON_TZ_LINE="CRON_TZ=Europe/Moscow"
@@ -165,5 +165,3 @@ echo -e "${CYAN}│${NC} ${WHITE}🎉 Deployment completed successfully!${NC}"
 echo -e "${CYAN}│${NC} ${GREEN}Total deployment time: ${total_duration}s${NC}"
 echo -e "${CYAN}│${NC} ${YELLOW}Finished at: ${current_time}${NC}"
 echo -e "${CYAN}└─────────────────────────────────────────────────────────────────┘${NC}"
-
-

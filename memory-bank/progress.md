@@ -14,15 +14,23 @@
 - ✅ Log rotation and retention (30 days)
 - ✅ Alert account integration with separate authentication
 - ✅ AccountCollection with proper containment checking
+- ✅ Telegram logging handler (WARNING+ level messages)
+- ✅ CLI architecture optimization with dependency injection
+- ✅ Custom exception hierarchy for better error handling
+- ✅ Security hardening (no hardcoded tokens)
+- ✅ Zero extra dependencies (urllib-based HTTP client)
 - ✅ Test structure (unit + integration tests) with documentation in memory-bank
 
 ## Current Implementation
 - **SenderAccount**: Handles all Telegram operations with auto-join and proper API credentials
 - **AlertManager**: Dedicated class for alert account lifecycle and publishing operations
+- **TelegramLoggingHandler**: Custom logging handler that sends WARNING+ messages to Telegram chats
 - **Client Management**: Loads settings from Google Sheets with alert account support
-- **Error Recovery**: Comprehensive error handling with user-friendly messages
+- **Error Recovery**: Comprehensive error handling with custom exception hierarchy and user-friendly messages
+- **CLI Architecture**: Optimized with AppContext pattern, dependency injection, and focused functions
 - **Schedule Management**: Auto-adjustment for slow mode violations
 - **Account Creation**: Centralized `create_sender_account` function for consistent instantiation
+- **Security**: Environment-variable-only configuration with no hardcoded tokens
 
 ## Known Issues
 - **Fixed (2025-11-12)**: Media group caption forwarding issue - text/captions now preserved when forwarding media groups
@@ -30,6 +38,11 @@
 - **Verified (2025-11-12)**: Real-world media group forwarding tested and confirmed working
 
 ## Recent Changes
+- **CLI Architecture Optimization (2025-11-15)**: Refactored main() function into focused functions (configure_logfire, process_all_clients), eliminated global variables with AppContext dataclass, added comprehensive type hints throughout, and improved error handling with custom exception hierarchy (ClientProcessingError, AccountInitializationError, ProcessingError)
+- **Telegram Logging Implementation (2025-11-15)**: Added TelegramLoggingHandler class that sends WARNING+ level messages to Telegram chats, uses urllib for HTTP requests to avoid extra dependencies, includes 4096 character message limits and comprehensive error handling
+- **Security Hardening (2025-11-15)**: Removed hardcoded Telegram bot token from config.py, now requires TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID environment variables for secure configuration
+- **Dependency Optimization (2025-11-15)**: Replaced requests library with Python standard library urllib to eliminate unnecessary external dependencies, maintaining zero extra dependencies
+- **Test Coverage Enhancement (2025-11-15)**: Added comprehensive test suite for Telegram logging handler (7 new tests), updated existing tests to work with urllib, total test count now at 101 tests (94 unit + 7 telegram + 1 integration)
 - **Slow Mode Error Visibility Enhancement (2025-11-12)**: Modified `handle_slow_mode_error` to always display Russian error messages in Google Sheets when slow mode is detected, even when schedules don't need adjustment
 - **Improved User Feedback**: Users now see informational messages like "Обнаружен slow mode в чате, но расписания уже оптимальны" in Google Sheets for better transparency
 - **AccountCollection Fix (2025-11-12)**: Added missing `__contains__` method to tg library AccountCollection class to properly support `key in collection` operations
@@ -66,10 +79,9 @@
 
 ## Deployment Status
 - ✅ Successfully deployed and tested on VDS
-- ✅ All tests passing (94/94 unit + 1 integration test)
+- ✅ All tests passing (101/101 total: 94 unit + 7 telegram + 1 integration test)
 - ✅ Docker containerization available
 - ✅ Cron job integration complete
 - ✅ Production ready with media group support for query parameters
 - ✅ Integration tests validated with real Telegram API calls
-
-
+- ✅ Telegram logging handler ready for production use

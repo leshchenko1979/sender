@@ -1,6 +1,7 @@
 croniter
 gspread
 icontract
+logfire
 more-itertools
 pydantic
 pydantic-settings

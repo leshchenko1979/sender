@@ -50,6 +50,13 @@ async def send_message(self, chat_id, text, reply_to_msg_id=None):
 - **Revalidate on Use**: Alert accounts use `revalidate=True` for on-demand authentication
 - **Clean Separation**: Alert publishing logic isolated from account management concerns
 
+### Telegram Logging Handler
+- **TelegramLoggingHandler Class**: Custom logging handler that sends WARNING+ messages to Telegram
+- **Standard Library HTTP**: Uses `urllib` instead of external HTTP libraries to avoid extra dependencies
+- **Message Formatting**: Includes emoji, severity level, logger name, timestamp, and message content
+- **Error Resilience**: Gracefully handles API failures without crashing the application
+- **Message Limits**: Automatically truncates messages to Telegram's 4096 character limit
+
 ### Configuration Flow
 1. `core.config.get_settings()` loads `.env` once via `pydantic-settings`
 2. Load clients from `clients.yaml`
@@ -80,11 +87,12 @@ async def send_message(self, chat_id, text, reply_to_msg_id=None):
 - 20% buffer added to required intervals
 
 ### Logging and Monitoring Patterns
-- **Dual Logging**: Both system logs (`/var/log/sender.log`) and Supabase logs
+- **Triple Logging**: System logs (`/var/log/sender.log`), Supabase logs, and Telegram alerts (WARNING+)
 - **Structured Logging**: Consistent format with timestamps and context
 - **Error Tracking**: All errors logged with full context and recovery attempts
 - **Performance Monitoring**: Execution times and success/failure rates tracked
 - **Log Rotation**: Automatic daily rotation with 30-day retention
+- **Telegram Alerts**: Real-time notifications for warnings and errors via Telegram bot
 - **Debug Information**: Detailed logging for troubleshooting and analysis
 
 ## Data Models
@@ -148,4 +156,3 @@ The system supports sending messages to specific topics within Telegram forum su
 ### Usage Examples
 - Regular chat: `@mychannel` or `-1001234567890`
 - Forum topic: `@mychannel/123` or `-1001234567890/456`
-

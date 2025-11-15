@@ -1,15 +1,17 @@
 # Active Context
 
 ## Current Focus
-Slow mode error handling improvements and Google Sheets error visibility enhancement.
+CLI optimization, Telegram logging implementation, and security hardening.
 
 ## Key Implementation Details
-- Enhanced slow mode error handling to always display error messages in Google Sheets, even when schedules don't need adjustment
-- Error messages are now shown in Russian for better user experience
-- Comprehensive error visibility ensures users are informed of all slow mode detections
+- Comprehensive CLI code optimization with dependency injection and error handling improvements
+- Telegram logging handler for warnings and higher severity messages with urllib-based HTTP client
+- Security hardening by removing hardcoded tokens and using environment variables only
+- Maintained zero extra dependencies by using Python standard library for HTTP requests
 
-## Recent Changes (2025-11-12)
-- **Slow Mode Error Visibility Fix**: Modified `handle_slow_mode_error` to always set error messages in Google Sheets when slow mode is detected, regardless of whether schedule adjustments are needed
-- **Russian Error Messages**: Error messages for slow mode issues are now displayed in Russian for better user understanding
-- **Improved User Feedback**: Users now see informational messages like "Обнаружен slow mode в чате, но расписания уже оптимальны" in Google Sheets
-- **Test Updates**: Updated unit tests to verify error messages are properly set in all slow mode scenarios
+## Recent Changes (2025-11-15)
+- **CLI Architecture Optimization**: Refactored main() function into focused functions, eliminated global variables with AppContext pattern, added comprehensive type hints, and improved error handling with custom exception hierarchy
+- **Telegram Logging Implementation**: Added TelegramLoggingHandler class that sends WARNING+ level messages to Telegram chats, uses urllib for HTTP requests to avoid extra dependencies, includes message length limits and error handling
+- **Security Hardening**: Removed hardcoded Telegram bot token from config.py, now requires TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID environment variables for configuration
+- **Dependency Optimization**: Replaced requests library with Python standard library urllib to eliminate unnecessary external dependencies
+- **Test Coverage**: Added comprehensive test suite for Telegram logging handler (7 new tests), total test count now at 101
