@@ -7,3 +7,4 @@ __pycache__
 # macOS resource forks
 ._*
 .DS_Store
+.cursor/mcp.json
