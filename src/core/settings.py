@@ -16,6 +16,26 @@ class Setting(pydantic.BaseModel):
     error: str = ""
     link: str = ""
 
+    @pydantic.field_validator("active", mode="before")
+    @classmethod
+    def active_must_be_bool_or_int(cls, v) -> int | bool:
+        """Convert empty strings to False, and handle string representations of booleans."""
+        if v == "" or v is None:
+            return False
+        if isinstance(v, str):
+            # Handle common string representations
+            if v.lower() in ("true", "1", "yes", "on"):
+                return True
+            elif v.lower() in ("false", "0", "no", "off"):
+                return False
+            else:
+                # Try to convert to int, then to bool
+                try:
+                    return int(v)
+                except ValueError:
+                    return False
+        return v
+
     def __str__(self):
         return f"{self.chat_id} {self.text[:100]}"
 

@@ -1,4 +1,5 @@
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -89,3 +90,108 @@ async def _generate_message_link(
     except Exception as e:
         logger.warning(f"Failed to generate message link: {e}")
         return None
+
+
+async def _parse_message_link(link: str) -> tuple[str | None, int | None, int | None]:
+    """
+    Parse a Telegram message link to extract chat identifier, message ID, and topic ID.
+
+    Supports formats:
+    - https://t.me/username/message_id
+    - https://t.me/username/topic_id/message_id
+    - https://t.me/c/channel_id/message_id
+    - https://t.me/c/channel_id/topic_id/message_id
+
+    Returns:
+        Tuple of (chat_identifier, message_id, topic_id) where:
+        - chat_identifier: username (with @) or numeric chat ID
+        - message_id: the message ID
+        - topic_id: topic ID if present, None otherwise
+        Returns (None, None, None) if parsing fails
+    """
+    if not link or not isinstance(link, str):
+        return None, None, None
+
+    # Remove protocol and www if present
+    link = link.replace("https://", "").replace("http://", "").replace("www.", "")
+
+    # Match different link patterns
+    patterns = [
+        # Private chat with topic: t.me/c/channel_id/topic_id/message_id
+        r"t\.me/c/(\d+)/(\d+)/(\d+)",  # c/channel_id/topic_id/message_id
+        # Private chat no topic: t.me/c/channel_id/message_id
+        r"t\.me/c/(\d+)/(\d+)",  # c/channel_id/message_id
+        # Public chat with topic: t.me/username/topic_id/message_id
+        r"t\.me/([a-zA-Z0-9_]+)/(\d+)/(\d+)",  # username/topic_id/message_id
+        # Public chat no topic: t.me/username/message_id
+        r"t\.me/([a-zA-Z0-9_]+)/(\d+)",  # username/message_id
+    ]
+
+    for pattern in patterns:
+        match = re.match(pattern, link)
+        if match:
+            groups = match.groups()
+            if len(groups) == 3:
+                # Has topic_id: c/channel_id/topic_id/message_id or username/topic_id/message_id
+                if "c/" in link:
+                    # Private chat: c/channel_id/topic_id/message_id
+                    channel_id, topic_id, message_id = groups
+                    return f"-100{channel_id}", int(message_id), int(topic_id)
+                else:
+                    # Public chat: username/topic_id/message_id
+                    username, topic_id, message_id = groups
+                    return f"@{username}", int(message_id), int(topic_id)
+            elif len(groups) == 2:
+                # No topic_id: c/channel_id/message_id or username/message_id
+                if "c/" in link:
+                    # Private chat: c/channel_id/message_id
+                    channel_id, message_id = groups
+                    return f"-100{channel_id}", int(message_id), None
+                else:
+                    # Public chat: username/message_id
+                    username, message_id = groups
+                    return f"@{username}", int(message_id), None
+
+    return None, None, None
+
+
+async def _check_message_exists(link: str, account_app=None) -> bool:
+    """
+    Check if a Telegram message exists by parsing its link and querying the API.
+
+    Args:
+        link: Telegram message link (https://t.me/...)
+        account_app: Telegram account app instance for API calls
+
+    Returns:
+        True if message exists and is accessible, False if deleted or doesn't exist
+    """
+    if not link or not account_app:
+        return False
+
+    try:
+        chat_id, message_id, topic_id = await _parse_message_link(link)
+        if not chat_id or not message_id:
+            logger.warning(f"Could not parse message link: {link}")
+            return False
+
+        # Try to get the message
+        messages = await account_app.get_messages(entity=chat_id, ids=[message_id])
+
+        # Check if we got a valid response
+        if not messages:
+            # No response means we likely don't have access to the chat (banned, etc.)
+            logger.warning(
+                f"Failed to get messages for link {link} - no access to chat"
+            )
+            return False
+
+        # get_messages returns a list with None values for non-existent/deleted messages
+        # So we check if the first (and only) element is not None
+        return len(messages) > 0 and messages[0] is not None
+
+    except Exception as e:
+        logger.warning(f"Error checking message existence for link {link}: {e}")
+        # If we can't check (e.g., banned from chat, no access), assume message doesn't exist
+        # This will cause the setting to be disabled, which is appropriate since we can't access the chat
+        return False

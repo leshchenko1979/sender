@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 from ..core.clients import Client
 from ..core.settings import Setting
-from ..utils.telegram_utils import _generate_message_link
+from ..utils.telegram_utils import _check_message_exists, _generate_message_link
 from .sender import send_setting
 
 logger = logging.getLogger(__name__)
@@ -47,7 +47,18 @@ async def process_setting_outer(
                         f"Error: Could not figure out the crontab setting: {str(e)}"
                     )
             if not result:
-                result, message_info = await send_setting(setting, accounts, client)
+                # Check if previous message still exists before sending
+                if setting.link:
+                    acc = accounts[setting.account]
+                    message_exists = await _check_message_exists(setting.link, acc.app)
+                    if not message_exists:
+                        result = "Error: Предыдущее сообщение было удалено"
+                        # Don't send the message, just mark as processed with error
+                        was_processed = True
+                        was_successful = False
+
+                if not result:  # Only send if no error occurred
+                    result, message_info = await send_setting(setting, accounts, client)
 
         except Exception:
             result = f"Error: {traceback.format_exc()}"

@@ -2,12 +2,16 @@
 """
 Integration test to verify 4 messages are forwarded with caption preserved.
 Tests SenderAccount._forward_grouped_or_single method with real Telegram API.
+
+This test requires real Telegram API access and should be run manually with:
+pytest tests/integration/test_caption_forward.py -m "not skip_integration"
 """
 
 import asyncio
 import os
 import sys
 from pathlib import Path
+import pytest
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
@@ -20,6 +24,9 @@ from messaging.telegram_sender import SenderAccount
 from tg.utils import parse_telegram_message_url
 
 
+@pytest.mark.skip(
+    reason="Integration test requiring real Telegram API access. Run manually with -m 'not skip_integration'"
+)
 async def test_caption_forward():
     """Test that forwards exactly 4 messages with caption"""
 

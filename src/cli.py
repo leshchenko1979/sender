@@ -63,9 +63,9 @@ async def process_all_clients(app_settings: AppSettings, context: AppContext) ->
             await process_client(app_settings, context, client)
             logger.info(f"Finished {client.name}")
         except ClientProcessingError as exc:
-            logger.error(f"Client {client.name} processing failed: {exc}")
+            logger.exception(f"Client {client.name} processing failed: {exc}")
         except Exception as exc:
-            logger.error(f"Unexpected error processing client {client.name}: {exc}")
+            logger.exception(f"Unexpected error processing client {client.name}: {exc}")
 
     logger.info("Messages sent and logged successfully")
 
@@ -148,7 +148,14 @@ async def process_client(
     accounts = None
 
     try:
-        settings = client.load_settings()
+        try:
+            settings = client.load_settings()
+        except Exception as exc:
+            # Add settings loading failure to errors for alert reporting
+            errors[""] = f"Не удалось загрузить настройки: {str(exc)}"
+            raise ProcessingError(
+                f"Settings loading failed: {traceback.format_exc()}"
+            ) from exc
 
         if not any(s.active for s in settings):
             logger.warning(f"No active settings for {client.name}")
