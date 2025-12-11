@@ -71,9 +71,21 @@ async def _generate_message_link(
             try:
                 entity = await account_app.get_entity(chat_id)
             except Exception:
-                pass
+                logger.warning(f"Failed to resolve entity for chat_id {chat_id}")
+                return None
 
-        if entity and hasattr(entity, "username") and entity.username:
+        if not entity:
+            logger.warning(f"Could not resolve entity for chat_id {chat_id}")
+            return None
+
+        # Check if it's a channel/supergroup without username (private)
+        is_private_channel = (
+            hasattr(entity, "megagroup")
+            or hasattr(entity, "broadcast")
+            or (hasattr(entity, "id") and str(entity.id).startswith("-100"))
+        ) and not (hasattr(entity, "username") and entity.username)
+
+        if hasattr(entity, "username") and entity.username and not is_private_channel:
             # Public chat with username
             clean_username = entity.username.lstrip("@")
             if topic_id:
@@ -82,11 +94,15 @@ async def _generate_message_link(
                 return f"https://t.me/{clean_username}/{message_id}"
         else:
             # Private chat - use numeric ID
-            channel_id = _normalize_channel_id(str(chat_id))
-            if topic_id:
-                return f"https://t.me/c/{channel_id}/{topic_id}/{message_id}"
+            if hasattr(entity, "id") and entity.id is not None:
+                channel_id = _normalize_channel_id(str(entity.id))
+                if topic_id:
+                    return f"https://t.me/c/{channel_id}/{topic_id}/{message_id}"
+                else:
+                    return f"https://t.me/c/{channel_id}/{message_id}"
             else:
-                return f"https://t.me/c/{channel_id}/{message_id}"
+                logger.warning(f"Entity has no ID for private chat: {entity}")
+                return None
     except Exception as e:
         logger.warning(f"Failed to generate message link: {e}")
         return None

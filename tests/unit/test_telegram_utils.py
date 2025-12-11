@@ -1,7 +1,11 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from src.utils.telegram_utils import _parse_message_link, _check_message_exists
+from src.utils.telegram_utils import (
+    _parse_message_link,
+    _check_message_exists,
+    _generate_message_link,
+)
 
 
 class TestParseMessageLink:
@@ -168,3 +172,136 @@ class TestCheckMessageExists:
         mock_account_app.get_messages.assert_called_once_with(
             entity="-100123456789", ids=[789]
         )
+
+
+class TestGenerateMessageLink:
+    """Test cases for _generate_message_link function."""
+
+    @pytest.mark.asyncio
+    async def test_generate_public_chat_link(self):
+        """Test generating link for public chat with username."""
+        # Mock public channel with username
+        mock_entity = MagicMock()
+        mock_entity.username = "testchannel"
+        mock_entity.id = 123456789
+        mock_entity.megagroup = False
+        mock_entity.broadcast = False
+
+        mock_account_app = AsyncMock()
+        mock_account_app.get_entity.return_value = mock_entity
+
+        result = await _generate_message_link(
+            "@testchannel", 123, None, mock_account_app
+        )
+        assert result == "https://t.me/testchannel/123"
+        mock_account_app.get_entity.assert_called_once_with("@testchannel")
+
+    @pytest.mark.asyncio
+    async def test_generate_public_chat_link_with_topic(self):
+        """Test generating link for public chat with username and topic."""
+        mock_entity = MagicMock()
+        mock_entity.username = "@testchannel"
+        mock_entity.id = 123456789
+        mock_entity.megagroup = False
+        mock_entity.broadcast = False
+
+        mock_account_app = AsyncMock()
+        mock_account_app.get_entity.return_value = mock_entity
+
+        result = await _generate_message_link(
+            "@testchannel", 456, 123, mock_account_app
+        )
+        assert result == "https://t.me/testchannel/123/456"
+
+    @pytest.mark.asyncio
+    async def test_generate_private_channel_link(self):
+        """Test generating link for private channel without username."""
+        mock_entity = MagicMock()
+        mock_entity.username = None
+        mock_entity.id = -1001234567890
+        mock_entity.broadcast = True  # It's a channel
+
+        mock_account_app = AsyncMock()
+        mock_account_app.get_entity.return_value = mock_entity
+
+        result = await _generate_message_link(
+            "-1001234567890", 789, None, mock_account_app
+        )
+        assert result == "https://t.me/c/1234567890/789"
+
+    @pytest.mark.asyncio
+    async def test_generate_private_supergroup_link(self):
+        """Test generating link for private supergroup without username."""
+        mock_entity = MagicMock()
+        mock_entity.username = None
+        mock_entity.id = -1001234567890
+        mock_entity.megagroup = True  # It's a supergroup
+
+        mock_account_app = AsyncMock()
+        mock_account_app.get_entity.return_value = mock_entity
+
+        result = await _generate_message_link(
+            "-1001234567890", 456, 789, mock_account_app
+        )
+        assert result == "https://t.me/c/1234567890/789/456"
+
+    @pytest.mark.asyncio
+    async def test_generate_link_entity_resolution_fails(self):
+        """Test that None is returned when entity resolution fails."""
+        mock_account_app = AsyncMock()
+        mock_account_app.get_entity.side_effect = Exception("Network error")
+
+        result = await _generate_message_link(
+            "@testchannel", 123, None, mock_account_app
+        )
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_generate_link_no_entity_found(self):
+        """Test that None is returned when no entity is found."""
+        mock_account_app = AsyncMock()
+        mock_account_app.get_entity.return_value = None
+
+        result = await _generate_message_link(
+            "@testchannel", 123, None, mock_account_app
+        )
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_generate_link_entity_without_id(self):
+        """Test that None is returned when entity has no ID."""
+        mock_entity = MagicMock()
+        mock_entity.username = None
+        mock_entity.id = None
+        mock_entity.megagroup = True
+
+        mock_account_app = AsyncMock()
+        mock_account_app.get_entity.return_value = mock_entity
+
+        result = await _generate_message_link(
+            "-1001234567890", 789, None, mock_account_app
+        )
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_generate_link_no_account_app(self):
+        """Test that None is returned when no account_app is provided."""
+        result = await _generate_message_link("@testchannel", 123, None, None)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_generate_link_private_channel_with_username(self):
+        """Test private channel that has username (should use public format)."""
+        mock_entity = MagicMock()
+        mock_entity.username = "privatechannel"
+        mock_entity.id = -1001234567890
+        mock_entity.broadcast = True
+        # Even though it's a private channel, if it has username, use public format
+
+        mock_account_app = AsyncMock()
+        mock_account_app.get_entity.return_value = mock_entity
+
+        result = await _generate_message_link(
+            "-1001234567890", 789, None, mock_account_app
+        )
+        assert result == "https://t.me/privatechannel/789"
