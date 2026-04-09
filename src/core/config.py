@@ -1,7 +1,4 @@
-from __future__ import annotations
-
 from functools import lru_cache
-from typing import Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -15,31 +12,27 @@ class AppSettings(BaseSettings):
         extra="allow",
     )
 
-    # Telegram API credentials
     api_id: int = Field(..., alias="API_ID")
     api_hash: str = Field(..., alias="API_HASH")
 
-    # Supabase configuration
     supabase_url: str = Field(..., alias="SUPABASE_URL")
     supabase_key: str = Field(..., alias="SUPABASE_KEY")
 
-    # Alert configuration
-    alert_account: Optional[str] = Field(None, alias="ALERT_ACCOUNT")
+    alert_account: str | None = Field(None, alias="ALERT_ACCOUNT")
 
-    # Google credentials
-    google_service_account_file: Optional[str] = Field(
+    google_service_account_file: str | None = Field(
         None, alias="GOOGLE_SERVICE_ACCOUNT_FILE"
     )
-    google_service_account: Optional[str] = Field(None, alias="GOOGLE_SERVICE_ACCOUNT")
+    google_service_account: str | None = Field(None, alias="GOOGLE_SERVICE_ACCOUNT")
 
-    # Logfire configuration
-    logfire_token: Optional[str] = Field(None, alias="LOGFIRE_TOKEN")
+    logfire_token: str | None = Field(None, alias="LOGFIRE_TOKEN")
 
-    # Telegram logging configuration
-    telegram_bot_token: Optional[str] = Field(None, alias="TELEGRAM_BOT_TOKEN")
-    telegram_chat_id: Optional[str] = Field(None, alias="TELEGRAM_CHAT_ID")
+    telegram_bot_token: str | None = Field(None, alias="TELEGRAM_BOT_TOKEN")
+    telegram_chat_id: str | None = Field(None, alias="TELEGRAM_CHAT_ID")
 
-    # Testing flag
+    gatus_url: str | None = Field(None, alias="GATUS_URL")
+    gatus_token: str | None = Field(None, alias="GATUS_TOKEN")
+
     testing: bool = Field(default=False, alias="TESTING")
 
 

@@ -14,6 +14,7 @@ from .core.settings import Setting
 from .infrastructure.supabase_logs import SupabaseLogHandler
 from .messaging.orchestrator import process_setting_outer
 from .messaging.telegram_sender import SenderAccount
+from .monitoring.gatus_reporter import GatusReporter
 from .monitoring.logging_config import setup_logging
 from .monitoring.stats_publisher import publish_stats
 
@@ -53,7 +54,11 @@ class AppContext:
     filesystem: SupabaseTableFileSystem
 
 
-async def process_all_clients(app_settings: AppSettings, context: AppContext) -> None:
+async def process_all_clients(
+    app_settings: AppSettings,
+    context: AppContext,
+    gatus_reporter: GatusReporter | None = None,
+) -> None:
     """Process all clients and log their progress."""
     clients = load_clients()
 
@@ -62,12 +67,26 @@ async def process_all_clients(app_settings: AppSettings, context: AppContext) ->
         try:
             await process_client(app_settings, context, client)
             logger.info(f"Finished {client.name}")
+            _report_to_gatus(gatus_reporter, client.name, success=True)
         except ClientProcessingError as exc:
             logger.exception(f"Client {client.name} processing failed: {exc}")
+            _report_to_gatus(gatus_reporter, client.name, success=False, error=str(exc))
         except Exception as exc:
             logger.exception(f"Unexpected error processing client {client.name}: {exc}")
+            _report_to_gatus(gatus_reporter, client.name, success=False, error=str(exc))
 
     logger.info("Messages sent and logged successfully")
+
+
+def _report_to_gatus(
+    reporter: GatusReporter | None,
+    client_name: str,
+    success: bool,
+    error: str | None = None,
+) -> None:
+    """Report client processing result to Gatus if reporter is available."""
+    if reporter:
+        reporter.report(client_name, success, error)
 
 
 async def main() -> None:
@@ -76,7 +95,12 @@ async def main() -> None:
     setup_logging(app_settings)
 
     context = set_up_supabase(app_settings)
-    await process_all_clients(app_settings, context)
+
+    gatus_reporter = None
+    if app_settings.gatus_url and app_settings.gatus_token:
+        gatus_reporter = GatusReporter(app_settings.gatus_url, app_settings.gatus_token)
+
+    await process_all_clients(app_settings, context, gatus_reporter)
 
 
 def set_up_supabase(app_settings: AppSettings) -> AppContext:
