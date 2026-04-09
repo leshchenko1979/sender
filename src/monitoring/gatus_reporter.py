@@ -20,7 +20,7 @@ class GatusReporter:
         query_params = f"success={success}"
         if error:
             query_params += f"&error={urllib.parse.quote(error)}"
-        return f"{self.url}/{client_name}?{query_params}"
+        return f"{self.url}?{query_params}"
 
     def _send_request(self, url: str) -> None:
         request = urllib.request.Request(url, method="POST")
