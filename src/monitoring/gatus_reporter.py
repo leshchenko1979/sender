@@ -17,7 +17,7 @@ class GatusReporter:
     def _build_report_url(
         self, client_name: str, success: bool, error: str | None
     ) -> str:
-        query_params = f"success={str(success).lower()}"
+        query_params = f"success={str(success).lower()}&duration=0ms"
         if error:
             query_params += f"&error={urllib.parse.quote(error)}"
         return f"{self.url}?{query_params}"
