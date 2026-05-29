@@ -26,7 +26,7 @@ class GatusReporter:
         request = urllib.request.Request(url, method="POST")
         request.add_header("Authorization", f"Bearer {self.token}")
         with urllib.request.urlopen(request, timeout=GATUS_REQUEST_TIMEOUT) as response:
-            logger.debug(f"Gatus health check updated: {response.status}")
+            logger.info(f"Gatus health check updated: {response.status}")
 
     def report(self, client_name: str, success: bool, error: str | None = None) -> None:
         url = self._build_report_url(client_name, success, error)
