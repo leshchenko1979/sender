@@ -67,7 +67,7 @@ def load_clients():
 
 @cache
 @ensure(lambda result: result, "Cannot load data from Google Sheets")
-@retry(tries=3)
+@retry(tries=3, delay=1, backoff=2)
 def get_worksheet(spreadsheet_url) -> gspread.Worksheet:
     sheet = get_google_client().open_by_url(spreadsheet_url)
     return sheet.get_worksheet(0)
@@ -75,7 +75,7 @@ def get_worksheet(spreadsheet_url) -> gspread.Worksheet:
 
 @cache
 @ensure(lambda result: result, "Cannot load data from Google Sheets")
-@retry(tries=3)
+@retry(tries=3, delay=1, backoff=2)
 def get_google_client():
     app_settings = get_settings()
     credentials_file_path = app_settings.google_service_account_file
@@ -90,4 +90,4 @@ def get_google_client():
                 "Set GOOGLE_SERVICE_ACCOUNT_FILE or GOOGLE_SERVICE_ACCOUNT."
             )
         service_dict = json.loads(service_string)
-    return gspread.service_account_from_dict(service_dict)
+    return gspread.service_account_from_dict(service_dict, timeout=60)
