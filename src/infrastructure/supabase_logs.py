@@ -68,7 +68,6 @@ class SupabaseLogHandler:
         # into the database
         entry = {
             "client_name": client_name,
-            "account": setting.account,
             "chat_id": setting.chat_id,
             "result": result,
             "setting_unique_id": setting.get_hash(),

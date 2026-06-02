@@ -52,7 +52,7 @@ def _call(
         MtProtoError: If the bridge returns an error or connection fails.
     """
     url = f"{MTROTO_BASE.rstrip('/')}/{method.lstrip('/')}"
-    body = json.dumps(params or {}).encode("utf-8")
+    body = json.dumps({"params": params or {}}).encode("utf-8")
 
     req = urllib.request.Request(url, data=body, method="POST")
     req.add_header("Content-Type", "application/json")
