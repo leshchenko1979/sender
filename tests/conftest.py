@@ -10,7 +10,6 @@ def setting_factory():
     def _build(**overrides):
         data = {
             "active": True,
-            "account": "71234567890",
             "schedule": "* * * * *",
             "chat_id": "test_chat",
             "text": "Hello",

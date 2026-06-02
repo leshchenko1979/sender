@@ -1,8 +1,13 @@
-import logging
-from typing import Optional
+"""Publish run statistics and alerts via the fast-mcp-telegram bridge.
 
-from ..core.config import AppSettings
-from ..messaging.telegram_sender import SenderAccount
+Uses per-client bearer token from client config.
+"""
+
+from __future__ import annotations
+
+import logging
+
+import telegram_bridge as bridge
 
 logger = logging.getLogger(__name__)
 
@@ -10,81 +15,61 @@ ALERT_HEADING = "Результаты последней рассылки:"
 
 
 class AlertManager:
-    """Manages alert account authentication and publishing."""
+    """Manages alert sending via the bridge."""
 
-    def __init__(self, fs, app_settings: Optional[AppSettings] = None):
-        self.fs = fs
-        self.app_settings = app_settings
+    def __init__(self, bearer_token: str | None = None):
+        self._bearer_token = bearer_token
 
-    def create_alert_account(self, phone: str):
-        """Create an alert account with proper credentials."""
-        if not self.app_settings:
-            raise ValueError("AppSettings required for alert account creation")
+    def send_alert(self, chat_id: str, message: str) -> None:
+        bridge.send_message(peer=chat_id, text=message, bearer_token=self._bearer_token)
 
-        return SenderAccount(
-            fs=self.fs,
-            phone=phone,
-            api_id=self.app_settings.api_id,
-            api_hash=self.app_settings.api_hash,
-        )
-
-    async def send_alert(self, alert_account, chat_id: str, message: str):
-        """Send an alert message using the provided account."""
-        async with alert_account.session(revalidate=True):
-            app = alert_account.app
-            await app.send_message(chat_id, message)
-
-    async def delete_last_alert(self, alert_account, chat_id: str):
-        """Delete the last alert message if it exists."""
-        async with alert_account.session(revalidate=True):
-            app = alert_account.app
-            msgs = await app.get_messages(chat_id, limit=1)
-            if msgs:
-                last_msg = msgs[0]
-                if (
-                    getattr(last_msg, "message", None)
-                    and ALERT_HEADING in last_msg.message
-                ):
-                    await app.delete_messages(chat_id, [last_msg.id])
+    def delete_last_alert(self, chat_id: str) -> None:
+        try:
+            result = bridge.get_history(
+                peer=chat_id, limit=1, bearer_token=self._bearer_token
+            )
+            messages = result.get("messages", [])
+            if messages:
+                last_msg = messages[0]
+                msg_text = last_msg.get("message", "")
+                last_id = last_msg.get("id")
+                if last_id and ALERT_HEADING in msg_text:
+                    bridge.delete_messages(
+                        peer=chat_id, ids=[last_id], bearer_token=self._bearer_token
+                    )
+        except bridge.MtProtoError:
+            pass
 
 
-async def publish_stats(
+def publish_stats(
     errors: dict,
     fs,
     client,
     processed_count: int,
     successful_count: int,
     app_settings=None,
-):
+) -> None:
     """Publish statistics and alerts for a client."""
     logger.info(
-        f"publish_stats called for client {client.name}, alert_account: {repr(client.alert_account)}"
+        f"publish_stats called for client {client.name}, alert_chat: {repr(client.alert_chat)}"
     )
 
-    # Use AlertManager for proper separation of concerns
-    alert_manager = AlertManager(fs, app_settings)
-    alert_account = alert_manager.create_alert_account(client.alert_account)
+    token = client.fast_mcp_bearer if hasattr(client, "fast_mcp_bearer") else None
+    alert_manager = AlertManager(bearer_token=token)
+    alert_manager.delete_last_alert(client.alert_chat)
 
-    # Delete last alert message if it exists
-    await alert_manager.delete_last_alert(alert_account, client.alert_chat)
-
-    # Build alert message
     text = f"{ALERT_HEADING}\n\n"
 
-    # If there are critical errors (like authorization failure), show only them
     if "" in errors:
         text += f"❌ {errors['']}\n\n"
         text += f"Подробности в файле настроек: {client.spreadsheet_url}."
     else:
-        # Добавляем статистику обработанных и успешных отправок
         if processed_count > 0:
             text += f"Наступило время для: {processed_count} рассылок\n"
             text += f"Успешных отправок: {successful_count} из {processed_count}\n\n"
         else:
             text += "Наступило время для: 0 рассылок\n\n"
 
-        # Calculate error stats from client.settings:
-        # turned off with errors, active with errors
         turned_off_with_errors = len(
             [s for s in client.settings if not s.active and s.error]
         )
@@ -110,8 +95,7 @@ async def publish_stats(
             f"Подробности в файле настроек: {client.spreadsheet_url}."
         )
 
-    # Send alert message
-    await alert_manager.send_alert(alert_account, client.alert_chat, text)
+    alert_manager.send_alert(client.alert_chat, text)
 
     if errors:
         logger.warning("Alert message sent", extra={"errors": errors})

@@ -8,5 +8,3 @@ pydantic-settings
 pyyaml
 reretry
 supabase
-telethon
-tg @ git+https://github.com/leshchenko1979/tg.git

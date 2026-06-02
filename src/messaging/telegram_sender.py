@@ -1,133 +1,117 @@
+"""Replaces Telegram Telethon calls with HTTP calls to fast-mcp-telegram MTProto bridge.
+
+Previously used Telethon + tg.account.Account for all Telegram operations.
+Now uses telegram_bridge module (HTTP POST to fast-mcp-telegram).
+Each client provides its own Bearer token for the bridge.
+"""
+
+from __future__ import annotations
+
 import re
 
-from telethon.errors import RPCError
-from telethon.tl.functions.channels import JoinChannelRequest
-from telethon.tl.functions.messages import (
-    ForwardMessagesRequest,
-    GetHistoryRequest,
-    ImportChatInviteRequest,
-)
-from tg.account import Account
-
+import telegram_bridge as bridge
 
 # Telegram API constants
 MEDIA_GROUP_MAX_SIZE = 10  # Maximum messages in a Telegram media group
 
-# Global album-level cache: (chat_id, grouped_id) -> sorted message IDs
-_GROUPED_MESSAGES_CACHE: dict[tuple[int, int], list[int]] = {}
+# Global album-level cache: (chat_id_or_username, grouped_id) -> sorted message IDs
+_GROUPED_MESSAGES_CACHE: dict[tuple[int | str, int], list[int]] = {}
 
 
-class SenderAccount(Account):
-    """Defines methods for sending and forwarding messages
-    with forced joining the group if the peer is not in the chat yet."""
+class SenderAccount:
+    """Thin wrapper around telegram_bridge for sending/forwarding messages.
 
-    async def _get_grouped_message_ids(self, from_chat_id, message_id, grouped_id):
-        """Retrieve all message IDs in a media group around the given message.
+    Instead of a Telethon Account, this holds a per-client Bearer token
+    passed to every bridge call.
+    """
 
-        Media groups contain max MEDIA_GROUP_MAX_SIZE messages. Uses a centered window
-        approach with album-level caching for optimal performance.
+    def __init__(self, bearer_token: str | None = None, *_args, **_kwargs):
+        """Construct with an optional per-client bearer token.
+
+        If None, falls back to FAST_MCP_BEARER env var in the bridge module.
         """
-        # Check cache first (album-level caching)
+        self._bearer_token = bearer_token
+
+    def _get_grouped_message_ids(
+        self,
+        from_chat_id: int | str,
+        message_id: int,
+        grouped_id: int,
+    ) -> list[int]:
         cache_key = (from_chat_id, grouped_id)
-        cached_messages = _GROUPED_MESSAGES_CACHE.get(cache_key)
-        if cached_messages is not None:
-            # Ensure target message is included (defensive programming)
-            if message_id not in cached_messages:
-                cached_messages = sorted(cached_messages + [message_id])
-            return cached_messages
+        cached = _GROUPED_MESSAGES_CACHE.get(cache_key)
+        if cached is not None:
+            return sorted(set(cached + [message_id]))
 
         try:
-            # Get a centered window of messages around the target message
-            # Start half the window size back to ensure we capture the full group
-            history_request = GetHistoryRequest(
+            result = bridge.get_history(
                 peer=from_chat_id,
                 offset_id=message_id,
-                offset_date=None,
                 add_offset=-MEDIA_GROUP_MAX_SIZE,
                 limit=MEDIA_GROUP_MAX_SIZE * 2,
-                max_id=0,
-                min_id=0,
-                hash=0,
+                bearer_token=self._bearer_token,
             )
-
-            result = await self.app(history_request)
-
-            # Extract messages with matching grouped_id using list comprehension
-            grouped_messages = [
-                msg.id
-                for msg in result.messages
-                if hasattr(msg, "grouped_id") and msg.grouped_id == grouped_id
-            ]
-
-            # Ensure target message is included and sort chronologically
-            if message_id not in grouped_messages:
-                grouped_messages.append(message_id)
-
-            grouped_messages = sorted(grouped_messages)
-
+            messages = result.get("messages", [])
+            grouped = [m["id"] for m in messages if m.get("grouped_id") == grouped_id]
+            if message_id not in grouped:
+                grouped.append(message_id)
+            grouped = sorted(grouped)
         except Exception:
-            # Fallback: return just the target message if search fails
-            grouped_messages = [message_id]
+            grouped = [message_id]
 
-        # Cache the result (simple dict - no size limit for now)
-        _GROUPED_MESSAGES_CACHE[cache_key] = grouped_messages
+        _GROUPED_MESSAGES_CACHE[cache_key] = grouped
+        return grouped
 
-        return grouped_messages
-
-    async def _forward_grouped_or_single(
-        self, chat_id, from_chat_id, message_id, reply_to_msg_id=None
-    ):
-        """Forward a message or entire media group if the message is part of one."""
-        source_message = await self.app.get_messages(from_chat_id, ids=message_id)
-        if not source_message:
+    def _forward_grouped_or_single(
+        self,
+        chat_id: int | str,
+        from_chat_id: int | str,
+        message_id: int,
+        reply_to_msg_id: int | None = None,
+    ) -> dict:
+        source = bridge.get_messages(
+            from_chat_id, [message_id], bearer_token=self._bearer_token
+        )
+        msgs = source.get("messages", [])
+        if not msgs:
             raise ValueError("Не удалось получить исходное сообщение")
 
-        # Determine messages to forward
-        if (
-            hasattr(source_message, "grouped_id")
-            and source_message.grouped_id is not None
-        ):
-            grouped_messages = await self._get_grouped_message_ids(
-                from_chat_id, message_id, source_message.grouped_id
-            )
-            # Always include the original message_id in case it wasn't found in the search
-            message_ids = sorted(list(set(grouped_messages + [message_id])))
+        source_msg = msgs[0]
+        grouped_id = source_msg.get("grouped_id")
 
-            # For media groups, captions are attached to the media messages themselves,
-            # so we don't need to look for separate preceding text messages
+        if grouped_id is not None:
+            grouped_ids = self._get_grouped_message_ids(
+                from_chat_id, message_id, grouped_id
+            )
+            message_ids = sorted(set(grouped_ids + [message_id]))
         else:
             message_ids = [message_id]
 
-        # Forward messages using MTProto ForwardMessagesRequest (supports both regular and forum topics)
-        return await self.app(
-            ForwardMessagesRequest(
-                from_peer=from_chat_id,
-                id=message_ids,
-                to_peer=chat_id,
-                top_msg_id=reply_to_msg_id,  # None for regular forwarding, topic ID for forum topics
-                drop_author=True,
-            )
+        return bridge.forward_messages(
+            from_peer=from_chat_id,
+            to_peer=chat_id,
+            message_ids=message_ids,
+            top_msg_id=reply_to_msg_id,
+            drop_author=True,
+            bearer_token=self._bearer_token,
         )
 
-    async def _join_chat(self, chat_id):
+    def _join_chat(self, chat_id: int | str) -> None:
         try:
-            # If chat_id is an invite link, try importing invite first
             invite_hash = self._extract_invite_hash(str(chat_id))
             if invite_hash:
                 try:
-                    await self.app(ImportChatInviteRequest(invite_hash))
+                    bridge.import_chat_invite(
+                        invite_hash, bearer_token=self._bearer_token
+                    )
                     return
-                except RPCError:
-                    # fall back to channel join attempt below
+                except bridge.MtProtoError:
                     pass
-
-            # For public channels/supergroups this will work with username or id
-            await self.app(JoinChannelRequest(chat_id))
-        except RPCError:
-            # Silently ignore join failures; send/forward will raise clearer error
+            bridge.join_channel(str(chat_id), bearer_token=self._bearer_token)
+        except bridge.MtProtoError:
             pass
 
-    def _extract_invite_hash(self, text: str):
-        # Supports t.me/joinchat/<hash> and t.me/+<hash>
+    @staticmethod
+    def _extract_invite_hash(text: str) -> str | None:
         m = re.search(r"t\.me/(?:joinchat/|\+)([A-Za-z0-9_-]{16,})", text)
         return m.group(1) if m else None

@@ -17,8 +17,8 @@ FROM python:3-alpine
 
 WORKDIR /app
 
-# Copy installed packages from builder stage
-COPY --from=builder /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
+# Copy installed packages from builder stage (version-agnostic — same base image python:3-alpine)
+COPY --from=builder /usr/local/lib/ /usr/local/lib/
 
 # Copy project files
 COPY clients.yaml .

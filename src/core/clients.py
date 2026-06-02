@@ -16,6 +16,7 @@ class Client(pydantic.BaseModel, extra="allow"):
     spreadsheet_url: str
     alert_chat: str
     alert_account: str | int
+    fast_mcp_bearer: str | None = None
 
     def load_settings(self) -> list[Setting]:
         data = get_worksheet(self.spreadsheet_url).get_all_values()
@@ -90,4 +91,4 @@ def get_google_client():
                 "Set GOOGLE_SERVICE_ACCOUNT_FILE or GOOGLE_SERVICE_ACCOUNT."
             )
         service_dict = json.loads(service_string)
-    return gspread.service_account_from_dict(service_dict, timeout=60)
+    return gspread.service_account_from_dict(service_dict)

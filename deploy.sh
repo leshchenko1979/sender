@@ -52,14 +52,14 @@ fi
 source .env
 echo "Environment loaded"
 
-ruff check . --fix
-ruff format .
+.venv/bin/ruff check . --fix
+.venv/bin/ruff format .
 echo "Code quality checks completed"
 
 # Run unit tests if not skipped
 if [ "$SKIP_TESTS" = false ]; then
     echo "Running unit tests..."
-    pytest tests/unit/ --maxfail=1 -q
+    PYTHONPATH=/root/sender/src .venv/bin/pytest tests/unit/ --maxfail=1 -q
 
     # If any of the above commands failed, exit
     if [ $? -ne 0 ]; then

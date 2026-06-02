@@ -12,24 +12,24 @@ class AppSettings(BaseSettings):
         extra="allow",
     )
 
-    api_id: int = Field(..., alias="API_ID")
-    api_hash: str = Field(..., alias="API_HASH")
-
+    # Supabase (still used for logs)
     supabase_url: str = Field(..., alias="SUPABASE_URL")
     supabase_key: str = Field(..., alias="SUPABASE_KEY")
 
-    alert_account: str | None = Field(None, alias="ALERT_ACCOUNT")
-
+    # Google Sheets (still used for settings)
     google_service_account_file: str | None = Field(
         None, alias="GOOGLE_SERVICE_ACCOUNT_FILE"
     )
     google_service_account: str | None = Field(None, alias="GOOGLE_SERVICE_ACCOUNT")
 
-    logfire_token: str | None = Field(None, alias="LOGFIRE_TOKEN")
+    # Telegram bridge auth
 
+    # Monitoring / logging
+    logfire_token: str | None = Field(None, alias="LOGFIRE_TOKEN")
     telegram_bot_token: str | None = Field(None, alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: str | None = Field(None, alias="TELEGRAM_CHAT_ID")
 
+    # Gatus health reporting
     gatus_url: str | None = Field(None, alias="GATUS_URL")
     gatus_token: str | None = Field(None, alias="GATUS_TOKEN")
 

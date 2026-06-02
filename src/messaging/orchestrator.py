@@ -1,7 +1,15 @@
+"""Message orchestration — processing settings, checking schedules, logging.
+
+Previously used async Telethon via tg.account.Account and AccountCollection.
+Now uses the synchronous fast-mcp-telegram bridge.
+Supports per-client bearer tokens.
+"""
+
+from __future__ import annotations
+
 import datetime
 import logging
 import traceback
-from typing import Any
 from zoneinfo import ZoneInfo
 
 from ..core.clients import Client
@@ -12,16 +20,25 @@ from .sender import send_setting
 logger = logging.getLogger(__name__)
 
 
-async def process_setting_outer(
+def _client_token(client: Client | None) -> str | None:
+    """Extract bearer token from client config."""
+    return client.fast_mcp_bearer if client else None
+
+
+def process_setting_outer(
     client_name: str,
     setting: Setting,
-    accounts: Any,
     errors: dict[str, str],
     client: Client | None = None,
-    supabase_logs: Any = None,
+    supabase_logs=None,
 ) -> tuple[bool, bool]:
+    """Process a single setting: check schedule, forward/send, log.
+
+    Returns (was_processed, was_successful).
+    """
     was_processed = False
     was_successful = False
+    token = _client_token(client)
 
     if setting.active:
         try:
@@ -30,8 +47,6 @@ async def process_setting_outer(
                 if supabase_logs
                 else None
             )
-            # Check the setting time to determine if a message should be sent based
-            # on the last time it was sent.
             if not successful:
                 result = "Message was never sent before: logged successfully"
                 was_processed = True
@@ -46,33 +61,31 @@ async def process_setting_outer(
                     result = (
                         f"Error: Could not figure out the crontab setting: {str(e)}"
                     )
+
             if not result:
-                # Check if previous message still exists before sending
                 if setting.link:
-                    acc = accounts[setting.account]
-                    message_exists = await _check_message_exists(setting.link, acc.app)
+                    message_exists = _check_message_exists(
+                        setting.link, bearer_token=token
+                    )
                     if not message_exists:
                         result = "Error: Предыдущее сообщение было удалено"
-                        # Don't send the message, just mark as processed with error
                         was_processed = True
                         was_successful = False
 
-                if not result:  # Only send if no error occurred
-                    result, message_info = await send_setting(setting, accounts, client)
+                if not result:
+                    result, message_info = send_setting(setting, client)
 
         except Exception:
             result = f"Error: {traceback.format_exc()}"
     else:
         result = "Setting skipped"
 
-    # add log entry
     try:
         if supabase_logs:
             supabase_logs.add_log_entry(client_name, setting, result)
     except Exception:
         result = f"Logging error: {traceback.format_exc()}"
 
-    # add error to error list and setting
     if "error" in result.lower():
         errors[setting.get_hash()] = result
         setting.error = result
@@ -82,10 +95,9 @@ async def process_setting_outer(
     elif "successfully" in result.lower():
         moscow_tz = ZoneInfo("Europe/Moscow")
         timestamp = datetime.datetime.now(moscow_tz).strftime("%Y-%m-%d %H:%M:%S")
-        setting.error = f"ОК: {timestamp}"
+        setting.error = f"���: {timestamp}"
         setting.link = ""
 
-        # Try to generate link to the published message
         if (
             "message_info" in locals()
             and message_info
@@ -93,21 +105,16 @@ async def process_setting_outer(
             and "message_ids" in message_info
         ):
             try:
-                # Get account app for entity resolution
-                acc = accounts[setting.account]
-                first_message_id = message_info["message_ids"][
-                    0
-                ]  # Use first message ID
-                link = await _generate_message_link(
+                first_msg_id = message_info["message_ids"][0]
+                link = _generate_message_link(
                     chat_id=message_info["chat_id"],
-                    message_id=first_message_id,
+                    message_id=first_msg_id,
                     topic_id=message_info.get("topic_id"),
-                    account_app=acc.app,
+                    bearer_token=token,
                 )
                 if link:
                     setting.link = link
             except Exception:
-                # If link generation fails, leave link empty
                 pass
 
         was_successful = True

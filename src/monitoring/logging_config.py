@@ -17,7 +17,7 @@ class TelegramLoggingHandler(logging.Handler):
         super().__init__()
         self.bot_token = bot_token
         self.chat_id = chat_id
-        self.setLevel(logging.WARNING)  # Only log warnings and above
+        self.setLevel(logging.WARNING)
         self.setFormatter(
             logging.Formatter(
                 "🚨 %(levelname)s from %(name)s\n%(asctime)s\n%(message)s",
@@ -26,37 +26,27 @@ class TelegramLoggingHandler(logging.Handler):
         )
 
     def emit(self, record: logging.LogRecord) -> None:
-        """Send log message to Telegram."""
-        # Only process messages at WARNING level or higher
         if record.levelno < logging.WARNING:
             return
-
         try:
             message = self.format(record)
             self._send_to_telegram(message)
         except Exception as e:
-            # Don't let logging errors crash the application
             print(f"Failed to send log to Telegram: {e}", file=sys.stderr)
 
     def _send_to_telegram(self, message: str) -> None:
-        """Send message to Telegram bot API using urllib."""
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
         data = {
             "chat_id": self.chat_id,
-            "text": message[:4096],  # Telegram message limit
+            "text": message[:4096],
             "parse_mode": "HTML",
             "disable_web_page_preview": True,
         }
-
-        # Convert data to URL-encoded bytes
         import urllib.parse
 
         data_bytes = urllib.parse.urlencode(data).encode("utf-8")
-
-        # Create request with timeout
         req = Request(url, data=data_bytes, method="POST")
         req.add_header("Content-Type", "application/x-www-form-urlencoded")
-
         try:
             with urlopen(req, timeout=10) as response:
                 if response.status != 200:
@@ -66,7 +56,6 @@ class TelegramLoggingHandler(logging.Handler):
 
 
 def _configure_basic_logging() -> None:
-    """Configure basic logging with standard format and console output."""
     logging.basicConfig(
         level=logging.INFO,
         format="[%(asctime)s] [%(levelname)s] %(name)s: %(message)s",
@@ -77,53 +66,35 @@ def _configure_basic_logging() -> None:
 
 
 def _configure_logfire(app_settings: AppSettings) -> bool:
-    """Configure Logfire if available. Returns True if successful."""
     if app_settings.testing or not app_settings.logfire_token:
         return False
-
     try:
         logfire.configure(
             token=app_settings.logfire_token,
             service_name="sender",
             send_to_logfire=True,
         )
-
-        # Use LogfireLoggingHandler for standard logging integration
         root_logger = logging.getLogger()
         if not any(
             isinstance(h, logfire.LogfireLoggingHandler) for h in root_logger.handlers
         ):
             root_logger.addHandler(logfire.LogfireLoggingHandler())
             root_logger.setLevel(logging.INFO)
-
-        # Install auto-tracing with optimized settings
         logfire.install_auto_tracing(
             modules=["src"],
             min_duration=0.01,
             check_imported_modules="ignore",
         )
-
         logger.info("Logfire monitoring configured successfully")
         return True
-
     except Exception as e:
         logger.warning(f"Failed to configure Logfire: {e}")
         return False
 
 
 def _configure_telegram_logging(app_settings: AppSettings) -> None:
-    """Configure Telegram logging handler if credentials are available."""
     if not (app_settings.telegram_bot_token and app_settings.telegram_chat_id):
-        if app_settings.telegram_bot_token or app_settings.telegram_chat_id:
-            logger.info(
-                "Telegram logging partially configured - both TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set"
-            )
-        else:
-            logger.info(
-                "Telegram logging not configured - set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID to enable"
-            )
         return
-
     try:
         telegram_handler = TelegramLoggingHandler(
             app_settings.telegram_bot_token, app_settings.telegram_chat_id
@@ -135,22 +106,15 @@ def _configure_telegram_logging(app_settings: AppSettings) -> None:
 
 
 def setup_logging(app_settings: AppSettings) -> None:
-    """Set up all logging configuration including standard logging, Logfire, and Telegram.
-
-    Optimized to reduce code duplication and improve maintainability.
-    """
-    # Configure primary logging backend (Logfire preferred, fallback to basic)
     logfire_success = _configure_logfire(app_settings)
     if not logfire_success:
         _configure_basic_logging()
 
-    # Configure third-party library logging to reduce noise
+    # Reduce noise from HTTP clients
     logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("telethon").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
 
-    # Configure Telegram notifications for warnings/errors
     _configure_telegram_logging(app_settings)
 
 
-# Initialize logger (logging config will be set up in setup_logging function)
 logger = logging.getLogger(__name__)

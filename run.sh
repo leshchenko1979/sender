@@ -4,7 +4,6 @@ set -uo pipefail
 cd "$(dirname "$0")"
 
 # Load environment variables
-# shellcheck source=/dev/null
 [ -f .env ] && source .env
 
 LOG_FILE=/var/log/sender.log
@@ -21,7 +20,16 @@ fi
 docker rm -f sender >/dev/null 2>&1 || true
 
 echo "[$(date --iso-8601=seconds)] Starting sender run..." | tee -a "$LOG_FILE"
-docker run --name sender --cpus=0.5 --memory=256m --memory-reservation=128m sender >> "$LOG_FILE" 2>&1
+
+DOCKER_NETWORK_ARGS=""
+if docker network inspect traefik-public >/dev/null 2>&1; then
+  DOCKER_NETWORK_ARGS="--network traefik-public"
+fi
+
+docker run --name sender \
+  --cpus=0.5 --memory=256m --memory-reservation=128m \
+  $DOCKER_NETWORK_ARGS \
+  sender >> "$LOG_FILE" 2>&1
 EXIT_CODE=$?
 echo "[$(date --iso-8601=seconds)] Run finished with code $EXIT_CODE" | tee -a "$LOG_FILE"
 
