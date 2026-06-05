@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sender Dashboard</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+    <header>
+        <h1>Sender Dashboard</h1>
+        <nav>
+            <button class="tab active" data-tab="overview">Обзор</button>
+            <button class="tab" data-tab="errors">Ошибки</button>
+            <button class="tab" data-tab="groups">Группы</button>
+            <button class="tab" data-tab="feed">Лента</button>
+        </nav>
+        <select id="client-switcher">
+            <option value="pro_gab">ProGab</option>
+            <option value="redevest">RedeVest</option>
+        </select>
+    </header>
+
+    <main>
+        <!-- Обзор -->
+        <section id="tab-overview" class="tab-content active">
+            <div class="overview-grid">
+                <div class="card">
+                    <h2>Объём (7 дней)</h2>
+                    <canvas id="volume-chart"></canvas>
+                </div>
+                <div class="card">
+                    <h2>Ошибки <span id="error-count" class="badge">0</span></h2>
+                    <div id="error-summary"></div>
+                </div>
+            </div>
+            <div class="card">
+                <h2>Группы</h2>
+                <div id="groups-summary"></div>
+            </div>
+            <div class="card">
+                <h2>Последние отправки</h2>
+                <div id="feed-preview"></div>
+            </div>
+        </section>
+
+        <!-- Ошибки -->
+        <section id="tab-errors" class="tab-content">
+            <div id="errors-list"></div>
+        </section>
+
+        <!-- Группы -->
+        <section id="tab-groups" class="tab-content">
+            <table id="groups-table">
+                <thead>
+                    <tr>
+                        <th>Группа</th>
+                        <th title="Сейчас в сети">👁 Онлайн</th>
+                        <th title="Все посты в группе сегодня">📝 Постов сегодня</th>
+                        <th title="Все посты в группе за 7 дней">📊 Постов за неделю</th>
+                        <th title="Среднее количество постов в день">📈 Среднее/день</th>
+                    </tr>
+                </thead>
+                <tbody id="groups-tbody"></tbody>
+            </table>
+        </section>
+
+        <!-- Лента -->
+        <section id="tab-feed" class="tab-content">
+            <div id="feed-list"></div>
+        </section>
+    </main>
+
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>

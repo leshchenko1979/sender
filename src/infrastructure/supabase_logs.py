@@ -63,9 +63,20 @@ class SupabaseLogHandler:
             return datetime.datetime.fromisoformat(result)
 
     @retry(tries=3)
-    def add_log_entry(self, client_name: str, setting: Setting, result: str):
-        # Save time by not writing `skipped` and `already sent`
-        # into the database
+    def add_log_entry(
+        self,
+        client_name: str,
+        setting: Setting,
+        result: str,
+        message_title: str | None = None,
+        source_link: str | None = None,
+        message_link: str | None = None,
+    ):
+        """Log a send attempt to Supabase.
+
+        Enriched fields (message_title, source_link, message_link) are only
+        written for actual send attempts (not skipped/already-sent).
+        """
         entry = {
             "client_name": client_name,
             "chat_id": setting.chat_id,
@@ -74,6 +85,12 @@ class SupabaseLogHandler:
         }
 
         if "skipped" not in result and "already sent" not in result:
+            if message_title is not None:
+                entry["message_title"] = message_title
+            if source_link is not None:
+                entry["source_link"] = source_link
+            if message_link is not None:
+                entry["message_link"] = message_link
             self.supabase_client.table("log_entries").insert(entry).execute()
 
         # Log errors as warnings for easier search in the log

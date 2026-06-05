@@ -14,10 +14,29 @@ from zoneinfo import ZoneInfo
 
 from ..core.clients import Client
 from ..core.settings import Setting
+from ..utils.telegram_url_parser import parse_telegram_message_url
 from ..utils.telegram_utils import _check_message_exists, _generate_message_link
 from .sender import send_setting
 
 logger = logging.getLogger(__name__)
+
+
+def _is_url(text: str) -> bool:
+    """Check if text is a Telegram message URL."""
+    try:
+        parse_telegram_message_url(text)
+        return True
+    except (ValueError, TypeError):
+        return False
+
+
+def _extract_title(setting: Setting) -> str | None:
+    """Extract a short title from the setting for logging."""
+    if not setting.text:
+        return None
+    if _is_url(setting.text):
+        return "[Пересылка]"
+    return setting.text[:100] if setting.text else None
 
 
 def _client_token(client: Client | None) -> str | None:
@@ -80,12 +99,6 @@ def process_setting_outer(
     else:
         result = "Setting skipped"
 
-    try:
-        if supabase_logs:
-            supabase_logs.add_log_entry(client_name, setting, result)
-    except Exception:
-        result = f"Logging error: {traceback.format_exc()}"
-
     if "error" in result.lower():
         errors[setting.get_hash()] = result
         setting.error = result
@@ -95,7 +108,7 @@ def process_setting_outer(
     elif "successfully" in result.lower():
         moscow_tz = ZoneInfo("Europe/Moscow")
         timestamp = datetime.datetime.now(moscow_tz).strftime("%Y-%m-%d %H:%M:%S")
-        setting.error = f"���: {timestamp}"
+        setting.error = f"ОК: {timestamp}"
         setting.link = ""
 
         if (
@@ -118,5 +131,19 @@ def process_setting_outer(
                 pass
 
         was_successful = True
+
+    # Log entry — AFTER link generation so setting.link is populated
+    try:
+        if supabase_logs:
+            supabase_logs.add_log_entry(
+                client_name,
+                setting,
+                result,
+                message_title=_extract_title(setting),
+                source_link=setting.text if _is_url(setting.text) else None,
+                message_link=setting.link or None,
+            )
+    except Exception:
+        logger.warning(f"Failed to log entry for {setting.chat_id}: {traceback.format_exc()}")
 
     return was_processed, was_successful
