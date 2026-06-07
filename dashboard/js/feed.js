@@ -1,3 +1,5 @@
+import { esc, tgLink, toTgLink } from './utils.js';
+
 export function renderFeed(container, entries) {
     if (!container) return;
     if (entries.length === 0) {
@@ -12,7 +14,7 @@ export function renderFeed(container, entries) {
         const statusIcon = ok ? '✅' : '⚠️';
         const title = e.message_title || e.text || '[—]';
         const link = e.message_link
-            ? `<a href="${esc(e.message_link)}" target="_blank">→</a>`
+            ? `<a href="${esc(toTgLink(e.message_link))}" target="_blank">→</a>`
             : '';
         const gLink = tgLink(e.chat_id);
 
@@ -24,19 +26,4 @@ export function renderFeed(container, entries) {
             ${link}
         </div>`;
     }).join('');
-}
-
-function esc(s) {
-    if (!s) return '';
-    const d = document.createElement('div');
-    d.textContent = s;
-    return d.innerHTML;
-}
-
-function tgLink(chatId) {
-    if (!chatId) return null;
-    if (chatId.startsWith('@')) return `tg://resolve?domain=${chatId.slice(1)}`;
-    const id = chatId.replace(/^-100/, '');
-    if (/^\d+$/.test(id)) return `tg://private?id=${id}`;
-    return null;
 }

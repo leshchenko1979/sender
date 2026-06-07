@@ -1,3 +1,5 @@
+import { esc, tgLink } from './utils.js';
+
 export function renderGroups(tbody, groups, dailyStats) {
     if (!tbody) return;
     dailyStats = dailyStats || [];
@@ -44,19 +46,4 @@ export function renderGroups(tbody, groups, dailyStats) {
             <td>${avg}</td>
         </tr>`;
     }).join('');
-}
-
-function esc(s) {
-    if (!s) return '';
-    const d = document.createElement('div');
-    d.textContent = s;
-    return d.innerHTML;
-}
-
-function tgLink(chatId) {
-    if (!chatId) return null;
-    if (chatId.startsWith('@')) return `tg://resolve?domain=${chatId.slice(1)}`;
-    const id = chatId.replace(/^-100/, '');
-    if (/^\d+$/.test(id)) return `tg://private?id=${id}`;
-    return null;
 }

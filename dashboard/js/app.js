@@ -3,6 +3,7 @@ import { renderVolumeChart, destroyVolumeChart } from './charts.js';
 import { renderGroups } from './groups.js';
 import { renderErrors } from './errors.js';
 import { renderFeed } from './feed.js';
+import { esc, tgLink } from './utils.js';
 
 let currentClient = 'pro_gab';
 
@@ -153,28 +154,6 @@ async function loadFeed() {
         limit: 50,
     });
     renderFeed(document.getElementById('feed-list'), feed);
-}
-
-// ── Helpers ────────────────────────────────────────────────────
-
-function esc(s) {
-    if (!s) return '';
-    const d = document.createElement('div');
-    d.textContent = s;
-    return d.innerHTML;
-}
-
-function fmt(n) {
-    if (n == null) return '—';
-    return n.toLocaleString('ru-RU');
-}
-
-function tgLink(chatId) {
-    if (!chatId) return null;
-    if (chatId.startsWith('@')) return `tg://resolve?domain=${chatId.slice(1)}`;
-    const id = chatId.replace(/^-100/, '');
-    if (/^\d+$/.test(id)) return `tg://private?id=${id}`;
-    return null;
 }
 
 // ── Init ───────────────────────────────────────────────────────
