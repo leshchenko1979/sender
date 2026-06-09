@@ -44,6 +44,79 @@ def _client_token(client: Client | None) -> str | None:
     return client.fast_mcp_bearer if client else None
 
 
+def _run_setting(
+    setting: Setting,
+    supabase_logs,
+    token: str | None,
+    client: Client | None,
+) -> tuple[str, bool, dict | None]:
+    """Run the send pipeline for an active setting.
+
+    Returns (result_text, was_processed, message_info_dict).
+    """
+    successful = (
+        supabase_logs.get_last_successful_entry(setting) if supabase_logs else None
+    )
+    if not successful:
+        return "Message was never sent before: logged successfully", True, None
+
+    try:
+        should_be_run = setting.should_be_run(successful)
+    except Exception as e:
+        return f"Error: Could not figure out the crontab setting: {e}", True, None
+
+    if not should_be_run:
+        return "Message already sent recently", False, None
+
+    if setting.link:
+        message_exists = _check_message_exists(setting.link, bearer_token=token)
+        if not message_exists:
+            return "Error: Предыдущее сообщение было удалено", True, None
+
+    result, message_info = send_setting(setting, client)
+    return result, True, message_info
+
+
+def _apply_result(
+    setting: Setting,
+    result: str,
+    message_info: dict | None,
+    errors: dict[str, str],
+    token: str | None,
+) -> bool:
+    """Update setting state from send result. Returns was_successful."""
+    if "error" in result.lower():
+        errors[setting.get_hash()] = result
+        setting.error = result
+        setting.active = 0
+        return False
+
+    if "successfully" in result.lower():
+        moscow_tz = ZoneInfo("Europe/Moscow")
+        timestamp = datetime.datetime.now(moscow_tz).strftime("%Y-%m-%d %H:%M:%S")
+        setting.error = f"ОК: {timestamp}"
+        setting.link = ""
+        if (
+            message_info
+            and isinstance(message_info, dict)
+            and message_info.get("message_ids")
+        ):
+            try:
+                first_msg_id = message_info["message_ids"][0]
+                if link := _generate_message_link(
+                    chat_id=message_info["chat_id"],
+                    message_id=first_msg_id,
+                    topic_id=message_info.get("topic_id"),
+                    bearer_token=token,
+                ):
+                    setting.link = link
+            except Exception:
+                pass
+        return True
+
+    return False
+
+
 def process_setting_outer(
     client_name: str,
     setting: Setting,
@@ -56,85 +129,25 @@ def process_setting_outer(
     Returns (was_processed, was_successful).
     """
     was_processed = False
-    was_successful = False
+    message_info = None
     token = _client_token(client)
 
-    if setting.active:
+    if not setting.active:
+        result = "Setting skipped"
+    else:
         try:
-            successful = (
-                supabase_logs.get_last_successful_entry(setting)
-                if supabase_logs
-                else None
+            result, was_processed, message_info = _run_setting(
+                setting, supabase_logs, token, client
             )
-            if not successful:
-                result = "Message was never sent before: logged successfully"
-                was_processed = True
-                was_successful = True
-            else:
-                try:
-                    should_be_run = setting.should_be_run(successful)
-                    result = None if should_be_run else "Message already sent recently"
-                    if should_be_run:
-                        was_processed = True
-                except Exception as e:
-                    result = (
-                        f"Error: Could not figure out the crontab setting: {str(e)}"
-                    )
-
-            if not result:
-                if setting.link:
-                    message_exists = _check_message_exists(
-                        setting.link, bearer_token=token
-                    )
-                    if not message_exists:
-                        result = "Error: Предыдущее сообщение было удалено"
-                        was_processed = True
-                        was_successful = False
-
-                if not result:
-                    result, message_info = send_setting(setting, client)
-
         except Exception:
             result = f"Error: {traceback.format_exc()}"
-    else:
-        result = "Setting skipped"
+            was_processed = True
 
-    if "error" in result.lower():
-        errors[setting.get_hash()] = result
-        setting.error = result
-        setting.active = 0
-        if was_processed:
-            was_successful = False
-    elif "successfully" in result.lower():
-        moscow_tz = ZoneInfo("Europe/Moscow")
-        timestamp = datetime.datetime.now(moscow_tz).strftime("%Y-%m-%d %H:%M:%S")
-        setting.error = f"ОК: {timestamp}"
-        setting.link = ""
+    was_successful = _apply_result(setting, result, message_info, errors, token)
 
-        if (
-            "message_info" in locals()
-            and message_info
-            and isinstance(message_info, dict)
-            and "message_ids" in message_info
-        ):
-            try:
-                first_msg_id = message_info["message_ids"][0]
-                link = _generate_message_link(
-                    chat_id=message_info["chat_id"],
-                    message_id=first_msg_id,
-                    topic_id=message_info.get("topic_id"),
-                    bearer_token=token,
-                )
-                if link:
-                    setting.link = link
-            except Exception:
-                pass
-
-        was_successful = True
-
-    # Log entry — AFTER link generation so setting.link is populated
-    try:
-        if supabase_logs:
+    # Log entry — AFTER _apply_result so setting.link is populated
+    if supabase_logs:
+        try:
             supabase_logs.add_log_entry(
                 client_name,
                 setting,
@@ -143,7 +156,9 @@ def process_setting_outer(
                 source_link=setting.text if _is_url(setting.text) else None,
                 message_link=setting.link or None,
             )
-    except Exception:
-        logger.warning(f"Failed to log entry for {setting.chat_id}: {traceback.format_exc()}")
+        except Exception:
+            logger.warning(
+                f"Failed to log entry for {setting.chat_id}: {traceback.format_exc()}"
+            )
 
     return was_processed, was_successful

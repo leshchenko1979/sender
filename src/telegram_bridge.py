@@ -13,7 +13,6 @@ import json
 import logging
 import os
 import urllib.error
-import urllib.parse
 import urllib.request
 
 logger = logging.getLogger(__name__)
@@ -51,13 +50,12 @@ def _call(
     Raises:
         MtProtoError: If the bridge returns an error or connection fails.
     """
-    url = f"{MTROTO_BASE.rstrip('/')}/{method.lstrip('/')}"
+    url = f"{MTROTO_BASE.rstrip('/')}/{method.removeprefix('/')}"
     body = json.dumps({"params": params or {}}).encode("utf-8")
 
     req = urllib.request.Request(url, data=body, method="POST")
     req.add_header("Content-Type", "application/json")
-    token = bearer_token or os.environ.get("FAST_MCP_BEARER", "")
-    if token:
+    if token := bearer_token or os.environ.get("FAST_MCP_BEARER", ""):
         req.add_header("Authorization", f"Bearer {token}")
 
     try:
@@ -72,7 +70,22 @@ def _call(
         raise MtProtoError(method, f"Invalid JSON response: {exc}") from exc
 
     if not payload.get("ok"):
-        err = payload.get("error", payload.get("detail", "unknown error"))
+        err = payload.get("error", payload.get("detail", None))
+        if err is None:
+            err_code = payload.get("code", "")
+            err_msg = payload.get("exception", {}).get("message", "")
+            if err_code or err_msg:
+                parts = [f"code={err_code}"] if err_code else []
+                if err_msg:
+                    parts.append(f"message={err_msg}")
+                err = " ".join(parts)
+            else:
+                safe_payload = {
+                    k: v
+                    for k, v in payload.items()
+                    if k in ("error", "code", "exception")
+                }
+                err = f"unknown error (payload: {json.dumps(safe_payload, ensure_ascii=False)[:300]})"
         raise MtProtoError(method, str(err))
 
     return payload.get("result", {})
@@ -163,7 +176,11 @@ def get_messages(
     ids: list[int],
     bearer_token: str | None = None,
 ) -> dict:
-    """Retrieve specific messages by ID from a chat.
+    """Retrieve specific messages by ID.
+
+    NOTE: `peer` is accepted for backward compatibility but NOT sent to the
+    bridge — messages.GetMessagesRequest only accepts `id`, not `peer`.
+    The Telegram API resolves message IDs across accessible dialogs.
 
     Args:
         bearer_token: Per-client bridge token (overrides env default).
@@ -171,9 +188,7 @@ def get_messages(
     Returns:
         Raw TL result from messages.GetMessages.
     """
-    return _call(
-        "messages.GetMessages", {"peer": peer, "id": ids}, bearer_token=bearer_token
-    )
+    return _call("messages.GetMessages", {"id": ids}, bearer_token=bearer_token)
 
 
 def join_channel(channel: str, bearer_token: str | None = None) -> dict:
@@ -207,12 +222,14 @@ def import_chat_invite(hash_or_link: str, bearer_token: str | None = None) -> di
 def delete_messages(peer: str, ids: list[int], bearer_token: str | None = None) -> dict:
     """Delete messages from a chat.
 
+    NOTE: `peer` is accepted for backward compatibility but NOT sent to the
+    bridge — messages.DeleteMessagesRequest only accepts `id`, not `peer`.
+    Message IDs are resolved by the Telegram API across accessible dialogs.
+
     Args:
         bearer_token: Per-client bridge token (overrides env default).
 
     Returns:
         Raw TL result from messages.DeleteMessages.
     """
-    return _call(
-        "messages.DeleteMessages", {"peer": peer, "id": ids}, bearer_token=bearer_token
-    )
+    return _call("messages.DeleteMessages", {"id": ids}, bearer_token=bearer_token)

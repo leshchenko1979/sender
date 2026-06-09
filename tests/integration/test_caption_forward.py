@@ -40,7 +40,7 @@ async def test_caption_forward():
         client = clients_list[0]
         settings_list = client.load_settings()
         active_settings = [s for s in settings_list if s.active]
-        account_name = list(set(setting.account for setting in active_settings))[0]
+        account_name = list({setting.account for setting in active_settings})[0]
 
         print("📱 Account identified:")
         print(f"   Phone: {account_name}")
@@ -142,9 +142,7 @@ async def test_caption_forward():
 
 
 if __name__ == "__main__":
-    # Run the integration test
-    success = asyncio.run(test_caption_forward())
-    if success:
+    if success := asyncio.run(test_caption_forward()):
         print("\n🎉 INTEGRATION TEST PASSED!")
         sys.exit(0)
     else:

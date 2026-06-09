@@ -52,7 +52,7 @@ class TelegramLoggingHandler(logging.Handler):
                 if response.status != 200:
                     raise URLError(f"HTTP {response.status}: {response.reason}")
         except URLError as e:
-            raise URLError(f"Failed to send Telegram message: {e}")
+            raise URLError(f"Failed to send Telegram message: {e}") from e
 
 
 def _configure_basic_logging() -> None:

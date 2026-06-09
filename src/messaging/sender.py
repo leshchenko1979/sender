@@ -43,7 +43,7 @@ def _handle_bridge_error(exc: bridge.MtProtoError) -> str:
 
     if code and "PAYMENT_REQUIRED" in code:
         m = re.search(r"ALLOW_PAYMENT_REQUIRED_(\d+)", detail)
-        stars = m.group(1) if m else None
+        stars = m[1] if m else None
         if stars == "1":
             need_text = "нужна 1 звезда"
         elif stars:
@@ -57,13 +57,11 @@ def _handle_bridge_error(exc: bridge.MtProtoError) -> str:
 
     if code and ("FLOOD" in code or "SLOWMODE" in code or "SLOW_MODE" in code):
         seconds = None
-        m = re.search(r"(\d+)\s*SEC", detail, re.IGNORECASE)
-        if m:
+        if m := re.search(r"(\d+)\s*SEC", detail, re.IGNORECASE):
             seconds = int(m.group(1))
         elif code:
-            m2 = re.search(r"_WAIT_(\d+)", code)
-            if m2:
-                seconds = int(m2.group(1))
+            if m2 := re.search(r"_WAIT_(\d+)", code):
+                seconds = int(m2[1])
         if seconds:
             wait = humanize_seconds(seconds)
             return (
@@ -120,14 +118,12 @@ def send_setting(
                 bearer_token=token,
             )
             result_text = "Message forwarded successfully"
-            message_ids = _extract_forwarded_ids(result_data)
-            if message_ids:
+            if message_ids := _extract_forwarded_ids(result_data):
                 return result_text, {
                     "chat_id": chat_id,
                     "topic_id": topic_id,
                     "message_ids": message_ids,
                 }
-            return result_text, {"chat_id": chat_id, "topic_id": topic_id}
         else:
             result_data = bridge.send_message(
                 peer=chat_id,
@@ -136,23 +132,20 @@ def send_setting(
                 bearer_token=token,
             )
             result_text = "Message sent successfully"
-            msg_id = _extract_message_id(result_data)
-            if msg_id:
+            if msg_id := _extract_message_id(result_data):
                 return result_text, {
                     "chat_id": chat_id,
                     "topic_id": topic_id,
                     "message_ids": [msg_id],
                 }
-            return result_text, {"chat_id": chat_id, "topic_id": topic_id}
-
+        return result_text, {"chat_id": chat_id, "topic_id": topic_id}
     except bridge.MtProtoError as exc:
         detail = exc.detail
         code = _extract_rpc_code(detail)
         if code and ("SLOWMODE" in code or "FLOOD_WAIT" in code or "SLOW_MODE" in code):
             seconds = None
-            m = re.search(r"(\d+)", detail)
-            if m:
-                seconds = int(m.group(1))
+            if m := re.search(r"(\d+)", detail):
+                seconds = int(m[1])
             if seconds is not None and client is not None:
                 result = handle_slow_mode_error(client, setting, seconds)
                 return result, None

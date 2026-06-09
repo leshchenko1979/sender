@@ -79,16 +79,14 @@ def get_worksheet(spreadsheet_url) -> gspread.Worksheet:
 @retry(tries=3, delay=1, backoff=2)
 def get_google_client():
     app_settings = get_settings()
-    credentials_file_path = app_settings.google_service_account_file
-    if credentials_file_path:
+    if credentials_file_path := app_settings.google_service_account_file:
         with open(credentials_file_path, "r") as credentials_file:
             service_dict = json.load(credentials_file)
-    else:
-        service_string = app_settings.google_service_account
-        if not service_string:
-            raise ValueError(
-                "Missing Google service account credentials. "
-                "Set GOOGLE_SERVICE_ACCOUNT_FILE or GOOGLE_SERVICE_ACCOUNT."
-            )
+    elif service_string := app_settings.google_service_account:
         service_dict = json.loads(service_string)
+    else:
+        raise ValueError(
+            "Missing Google service account credentials. "
+            "Set GOOGLE_SERVICE_ACCOUNT_FILE or GOOGLE_SERVICE_ACCOUNT."
+        )
     return gspread.service_account_from_dict(service_dict)

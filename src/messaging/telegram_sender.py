@@ -98,8 +98,7 @@ class SenderAccount:
 
     def _join_chat(self, chat_id: int | str) -> None:
         try:
-            invite_hash = self._extract_invite_hash(str(chat_id))
-            if invite_hash:
+            if invite_hash := self._extract_invite_hash(str(chat_id)):
                 try:
                     bridge.import_chat_invite(
                         invite_hash, bearer_token=self._bearer_token
@@ -114,4 +113,4 @@ class SenderAccount:
     @staticmethod
     def _extract_invite_hash(text: str) -> str | None:
         m = re.search(r"t\.me/(?:joinchat/|\+)([A-Za-z0-9_-]{16,})", text)
-        return m.group(1) if m else None
+        return m[1] if m else None

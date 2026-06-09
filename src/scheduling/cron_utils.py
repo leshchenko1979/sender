@@ -31,7 +31,7 @@ def calculate_interval_hours(cron_expr: str) -> float:
 
     try:
         cron = croniter.croniter(cron_expr, now)
-    except (ValueError, TypeError, Exception):
+    except Exception:
         # Invalid cron expression
         return 24 * 7  # Default to weekly
 
@@ -43,7 +43,7 @@ def calculate_interval_hours(cron_expr: str) -> float:
             if next_run > now + timedelta(days=7):
                 break
             runs.append(next_run)
-        except (ValueError, TypeError, Exception):
+        except Exception:
             # Invalid cron expression
             return 24 * 7  # Default to weekly
 

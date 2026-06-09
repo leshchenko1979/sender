@@ -28,8 +28,7 @@ class AlertManager:
             result = bridge.get_history(
                 peer=chat_id, limit=1, bearer_token=self._bearer_token
             )
-            messages = result.get("messages", [])
-            if messages:
+            if messages := result.get("messages", []):
                 last_msg = messages[0]
                 msg_text = last_msg.get("message", "")
                 last_id = last_msg.get("id")
@@ -70,20 +69,17 @@ def publish_stats(
         else:
             text += "Наступило время для: 0 рассылок\n\n"
 
-        turned_off_with_errors = len(
+        if turned_off_with_errors := len(
             [s for s in client.settings if not s.active and s.error]
-        )
-        turned_off_no_errors = len(
-            [s for s in client.settings if not s.active and not s.error]
-        )
-
-        if turned_off_with_errors:
+        ):
             text += (
                 f"{turned_off_with_errors} рассылок отключены из-за ошибок. "
                 "Исправьте и включите заново.\n\n"
             )
 
-        if turned_off_no_errors:
+        if turned_off_no_errors := len(
+            [s for s in client.settings if not s.active and not s.error]
+        ):
             text += (
                 f"{turned_off_no_errors} отключенных рассылок без ошибок. "
                 "Почему отключены?\n\n"

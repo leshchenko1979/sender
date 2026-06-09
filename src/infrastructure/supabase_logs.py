@@ -58,8 +58,7 @@ class SupabaseLogHandler:
             datetime.datetime: The datetime of the last successful entry if found, None otherwise.
         """
 
-        result = self.cache.get(setting.get_hash())
-        if result:
+        if result := self.cache.get(setting.get_hash()):
             return datetime.datetime.fromisoformat(result)
 
     @retry(tries=3)

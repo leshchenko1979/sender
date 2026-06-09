@@ -42,7 +42,7 @@ def _build_query_string(
     if thread_id:
         query_params.append(f"thread={thread_id}")
     qs = "&".join(query_params)
-    return "?" + qs if qs else ""
+    return f"?{qs}" if qs else ""
 
 
 def _generate_message_link(
@@ -68,7 +68,7 @@ def _generate_message_link(
             return f"https://t.me/{username}/{topic_id}/{message_id}"
         return f"https://t.me/{username}/{message_id}"
 
-    clean = _normalize_channel_id(str(chat_id).lstrip("@"))
+    clean = _normalize_channel_id(chat_id.lstrip("@"))
     if "/" in clean:
         clean = clean.split("/")[0]
     if topic_id:
@@ -78,11 +78,12 @@ def _generate_message_link(
 
 def _resolve_peer(peer: str, bearer_token: str | None = None) -> dict | None:
     """Resolve a peer (@username or numeric ID) via the bridge."""
-    s = str(peer).lstrip("@")
+    s = peer.lstrip("@")
     if s.lstrip("-").isdigit():
         try:
+            chat_id = int(s[4:]) if s.startswith("-100") and len(s) > 4 else int(s)
             return bridge._call(
-                "messages.GetChats", {"id": [int(s)]}, bearer_token=bearer_token
+                "messages.GetChats", {"id": [chat_id]}, bearer_token=bearer_token
             )
         except bridge.MtProtoError:
             return None
@@ -112,8 +113,7 @@ def _parse_message_link(link: str) -> tuple[str | None, int | None, int | None]:
     ]
 
     for pattern in patterns:
-        m = re.match(pattern, link)
-        if m:
+        if m := re.match(pattern, link):
             groups = m.groups()
             if len(groups) == 3:
                 if "c/" in link:
@@ -152,9 +152,7 @@ def _check_message_exists(
     try:
         result = bridge.get_messages(chat_id, [message_id], bearer_token=bearer_token)
         msgs = result.get("messages", [])
-        if msgs and msgs[0] is not None:
-            return True
-        return False
-    except Exception as e:
+        return bool(msgs and msgs[0] is not None)
+    except bridge.MtProtoError as e:
         logger.warning(f"Error checking message existence for link {link}: {e}")
         return False

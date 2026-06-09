@@ -31,16 +31,12 @@ def parse_telegram_message_url(url: str) -> tuple[str, int]:
     # Remove query params
     cleaned = cleaned.split("?")[0].rstrip("/")
 
-    # t.me/c/CHANNEL_ID[/TOPIC_ID/]MESSAGE_ID
-    m = re.match(r"c/(\d+)(?:/\d+)?/(\d+)$", cleaned)
-    if m:
-        channel_id = int(m.group(1))
-        msg_id = int(m.group(2))
+    if m := re.match(r"c/(\d+)(?:/\d+)?/(\d+)$", cleaned):
+        channel_id = int(m[1])
+        msg_id = int(m[2])
         return (f"-100{channel_id}", msg_id)
 
-    # t.me/USERNAME[/TOPIC_ID/]MESSAGE_ID
-    m = re.match(r"([a-zA-Z][a-zA-Z0-9_]+)(?:/\d+)?/(\d+)$", cleaned)
-    if m:
+    if m := re.match(r"([a-zA-Z][a-zA-Z0-9_]+)(?:/\d+)?/(\d+)$", cleaned):
         username = m.group(1)
         msg_id = int(m.group(2))
         return (f"@{username}", msg_id)
