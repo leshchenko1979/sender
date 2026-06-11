@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import random
+import re
 import time
 import tempfile
 from datetime import datetime, timezone
@@ -55,7 +56,7 @@ log = logging.getLogger("fwd")
 def api(method: str, params: dict | None = None) -> dict:
     data = json.dumps({"params": params or {}}).encode()
     req = Request(
-        f"{BRIDGE_URL}/mtproto-api/{method}",
+        f"{BRIDGE_URL.rstrip('/')}/mtproto-api/{method}",
         data=data,
         headers={
             "Content-Type": "application/json",
@@ -64,7 +65,11 @@ def api(method: str, params: dict | None = None) -> dict:
     )
     try:
         with urlopen(req, timeout=30) as r:
-            return json.loads(r.read().decode())
+            body = r.read().decode()
+            try:
+                return json.loads(body)
+            except (ValueError, json.JSONDecodeError) as e:
+                raise RuntimeError(f"bridge returned non-JSON (HTTP 200): {e}")
     except HTTPError as e:
         try:
             err = json.loads(e.read().decode())
@@ -107,8 +112,11 @@ def save_state(ts: int) -> None:
         with os.fdopen(fd, "w") as f:
             json.dump({"ts": ts}, f, indent=2)
         os.replace(tmp, STATE_FILE)
-    except BaseException:
-        os.unlink(tmp)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
         raise
 
 
@@ -123,7 +131,6 @@ def peer_id(peer_dict: dict) -> int | None:
         or peer_dict.get("channel_id")
         or peer_dict.get("chat_id")
     )
-
 
 
 # ── relevance filters & entity display ────────────────────────────────
@@ -147,7 +154,7 @@ def is_relevant(msg: dict, users: dict[int, dict]) -> bool:
         if not msg.get("mentioned", False):
             return False
         txt = msg.get("message", "") or ""
-        if "@all" in txt or "@everyone" in txt:
+        if re.search(r"(?:\A|[^\w])@(?:all|everyone)(?:\Z|[^\w])", txt, re.IGNORECASE):
             return False
         return True
     return False
@@ -208,8 +215,6 @@ def main() -> int:
     now_ts = int(time.time())
     if not last_ts:
         last_ts = now_ts - FIRST_BACK * 60
-    # In-memory dedup set (peer_id:msg_id) — not persisted across runs
-    forwarded_ids: set[str] = set()
 
     log.info(
         "Polling since %s",
@@ -218,13 +223,16 @@ def main() -> int:
 
     # 1. Get all recent dialogs
     try:
-        d = api("messages.GetDialogs", {
-            "offset_date": 0,
-            "offset_id": 0,
-            "offset_peer": {"_": "inputPeerEmpty"},
-            "limit": 100,
-            "hash": 0,
-        })
+        d = api(
+            "messages.GetDialogs",
+            {
+                "offset_date": 0,
+                "offset_id": 0,
+                "offset_peer": {"_": "inputPeerEmpty"},
+                "limit": 100,
+                "hash": 0,
+            },
+        )
     except RuntimeError as e:
         log.error("GetDialogs failed: %s", e)
         return 0
@@ -245,16 +253,19 @@ def main() -> int:
 
         # 2. Get recent history for this dialog
         try:
-            hist = api("messages.GetHistory", {
-                "peer": dialog_pid,
-                "offset_id": 0,
-                "offset_date": 0,
-                "add_offset": 0,
-                "limit": 50,
-                "max_id": 0,
-                "min_id": 0,
-                "hash": 0,
-            })
+            hist = api(
+                "messages.GetHistory",
+                {
+                    "peer": dialog_pid,
+                    "offset_id": 0,
+                    "offset_date": 0,
+                    "add_offset": 0,
+                    "limit": 50,
+                    "max_id": 0,
+                    "min_id": 0,
+                    "hash": 0,
+                },
+            )
         except RuntimeError as e:
             log.debug("GetHistory fail peer=%s: %s", dialog_pid, e)
             continue
@@ -267,17 +278,16 @@ def main() -> int:
         fwd_success = False
 
         for msg in reversed(msgs):  # oldest first
-            raw_date = msg.get("date") or 0
-            if isinstance(raw_date, (int, float)):
-                mdate = int(raw_date)
-            elif isinstance(raw_date, str):
+            mdate = msg.get("date") or 0
+            if isinstance(mdate, str):
                 try:
-                    dt = datetime.fromisoformat(raw_date)
-                    mdate = int(dt.timestamp())
+                    from datetime import datetime as _dt
+
+                    mdate = int(_dt.fromisoformat(mdate).timestamp())
                 except ValueError:
                     mdate = 0
             else:
-                mdate = 0
+                mdate = int(mdate)
             if mdate > max_ts:
                 max_ts = mdate
 
@@ -287,12 +297,7 @@ def main() -> int:
             if not is_relevant(msg, users_map):
                 continue
 
-            # 3. Check dedup by dialog + message_id (in-memory only)
-            key = f"{dialog_pid}:{msg.get('id')}"
-            if key in forwarded_ids:
-                continue
-
-            # 4. Send "From @..." header once per dialog
+            # 4. Send dialog header once per dialog
             if not header_sent:
                 display = get_entity_display(p, users_map, chats_map)
                 # Skip blacklisted dialogs
@@ -300,14 +305,17 @@ def main() -> int:
                     log.info("Skipping blacklisted: %s", display)
                     break
                 try:
-                    result = api("messages.SendMessage", {
-                        "peer": f"@{TARGET}",
-                        "message": f"{display}:",
-                    })
+                    result = api(
+                        "messages.SendMessage",
+                        {
+                            "peer": f"@{TARGET}",
+                            "message": f"{display}:",
+                        },
+                    )
                     time.sleep(0.3)
                     header_sent = True
                     header_key = display
-                    header_msg_id = result.get("id") if isinstance(result, dict) else None
+                    header_msg_id = result.get("id")
                     log.info("Header: %s", display)
                 except RuntimeError as e:
                     log.warning("Header send failed for %s: %s", display, e)
@@ -319,15 +327,17 @@ def main() -> int:
                 continue
 
             try:
-                api("messages.ForwardMessages", {
-                    "from_peer": from_pid,
-                    "id": [mid],
-                    "to_peer": f"@{TARGET}",
-                    "random_id": [random.randint(0, 2_147_483_647)],
-                })
+                api(
+                    "messages.ForwardMessages",
+                    {
+                        "from_peer": from_pid,
+                        "id": [mid],
+                        "to_peer": f"@{TARGET}",
+                        "random_id": [random.getrandbits(64)],
+                    },
+                )
                 preview = (msg.get("message") or "")[:80]
                 log.info(">> %s | msg=%s", preview, mid)
-                forwarded_ids.add(key)
                 fwd_success = True
                 total_fwd += 1
                 if total_fwd >= MAX_FWD:
@@ -348,7 +358,7 @@ def main() -> int:
             log.info("Cap reached, stopping dialog scan")
             break
 
-    # 6. Save state — only the latest ts (no forwarded_ids persisted)
+    # 6. Save state — only the latest ts
     save_state(max(max_ts, now_ts))
     log.info("Forwarded %d messages", total_fwd)
     return total_fwd
