@@ -10,12 +10,30 @@ import logging
 import os
 import random
 import time
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-BRIDGE_URL = os.getenv("BRIDGE_URL", "http://localhost:8000")
+# ── environment / .env loading ────────────────────────────────────────
+# Auto-load .env from same directory as this script, so cron can just
+# run "python3 forward_to_main.py" without explicit env sourcing.
+# Does NOT override already-set environment variables.
+_ENV_PATH = Path(__file__).resolve().parent / ".env"
+if _ENV_PATH.exists():
+    with _ENV_PATH.open() as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if not _line or _line.startswith("#") or "=" not in _line:
+                continue
+            _key, _val = _line.split("=", 1)
+            _key = _key.strip()
+            _val = _val.strip().strip("\"'")
+            if _key and not os.environ.get(_key):
+                os.environ[_key] = _val
+
+BRIDGE_URL = os.getenv("BRIDGE_URL", "https://tg-mcp.l1979.ru")
 BEARER_TOKEN = os.getenv("BEARER_TOKEN", "")
 TARGET = os.getenv("TARGET_USER", "leshchenko1979")
 STATE_FILE = os.getenv("STATE_FILE", "/data/projects/forwarder/state.json")
@@ -58,23 +76,40 @@ def api(method: str, params: dict | None = None) -> dict:
 
 
 # ── state persistence ──────────────────────────────────────────────────
+# State is a single JSON file on the host filesystem:
+#   {"ts": <unix_timestamp_of_last_forwarded_message>}
+#
+# The ts cutoff prevents re-forwarding. In-memory dedup (via a plain set
+# of "peer_id:msg_id" strings) avoids forwarding the same message twice
+# within a single run, but is NOT persisted — the ts is sufficient.
 
 
-def load_state() -> dict:
+def load_state() -> int:
+    """Return the last-forwarded message timestamp, or 0 if absent."""
     try:
-        with open(STATE_FILE) as f:
-            return json.load(f)
-    except (FileNotFoundError, ValueError):
-        return {"ts": 0, "forwarded_ids": {}}
+        data = json.loads(Path(STATE_FILE).read_text())
+        # Backward-compat: accept old format with forwarded_ids or direct ts
+        return int(data.get("ts", 0))
+    except (FileNotFoundError, ValueError, AttributeError):
+        return 0
 
 
-def save_state(ts: int, forwarded_ids: dict[str, int] | None = None) -> None:
+def save_state(ts: int) -> None:
+    """Atomically write state to disk (single ts, no forwarded_ids)."""
     Path(STATE_FILE).parent.mkdir(parents=True, exist_ok=True)
-    state = {"ts": ts}
-    if forwarded_ids:
-        state["forwarded_ids"] = forwarded_ids
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2)
+    # Write to temp file first, then atomic replace
+    fd, tmp = tempfile.mkstemp(
+        dir=Path(STATE_FILE).parent,
+        prefix=".state-",
+        suffix=".tmp",
+    )
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump({"ts": ts}, f, indent=2)
+        os.replace(tmp, STATE_FILE)
+    except BaseException:
+        os.unlink(tmp)
+        raise
 
 
 # ── peer helpers ───────────────────────────────────────────────────────
@@ -90,38 +125,36 @@ def peer_id(peer_dict: dict) -> int | None:
     )
 
 
-def msg_peer_key(msg: dict) -> str:
-    """Unique key for the dialog this message belongs to."""
-    pid = peer_id(msg.get("peer_id", {}))
-    return str(pid) if pid else "0"
-
 
 # ── relevance filters & entity display ────────────────────────────────
 
 
-def is_relevant(msg: dict) -> bool:
+def is_relevant(msg: dict, users: dict[int, dict]) -> bool:
     """True if message should be forwarded: DMs (all) + group/channel mentions."""
     if msg.get("_") in ("messageEmpty", "messageService", None):
         return False
-    # Skip "From @user:" headers created by the forwarder itself
-    msg_text = msg.get("message", "") or ""
-    if "[fwd-" in msg_text:
-        return False
     ptype = msg.get("peer_id", {}).get("_", "")
-    # All private chats
+    # All private chats (excluding bots and Telegram notifications)
     if ptype in ("peerUser", "PeerUser"):
         uid = msg.get("peer_id", {}).get("user_id")
         if uid == TELEGRAM_USER_ID:
             return False  # Telegram notifications (security codes, login)
+        if uid and uid in users and users[uid].get("bot", False):
+            return False  # Skip bots
         return True
-    # Group/channel — only if Алексей was mentioned (NOT post/channel broadcast)
+    # Group/channel — only if Алексей was mentioned (NOT @all/@everyone)
     if ptype in ("peerChat", "PeerChat", "peerChannel", "PeerChannel"):
-        return msg.get("mentioned", False)
+        if not msg.get("mentioned", False):
+            return False
+        txt = msg.get("message", "") or ""
+        if "@all" in txt or "@everyone" in txt:
+            return False
+        return True
     return False
 
 
 def build_entity_maps(dialogs_data: dict) -> tuple[dict, dict]:
-    """Build user_id→user and chat_id→chat lookup from GetDialogs response."""
+    """Build user_id->user and chat_id->chat lookup from GetDialogs response."""
     users = {}
     for u in dialogs_data.get("users", []):
         if u.get("id"):
@@ -171,10 +204,12 @@ def get_entity_display(
 
 
 def main() -> int:
-    state = load_state()
+    last_ts = load_state()
     now_ts = int(time.time())
-    last_ts = state.get("ts", 0) or now_ts - FIRST_BACK * 60
-    forwarded_ids: dict[str, int] = state.get("forwarded_ids", {})
+    if not last_ts:
+        last_ts = now_ts - FIRST_BACK * 60
+    # In-memory dedup set (peer_id:msg_id) — not persisted across runs
+    forwarded_ids: set[str] = set()
 
     log.info(
         "Polling since %s",
@@ -225,9 +260,9 @@ def main() -> int:
             continue
 
         msgs = hist.get("messages", [])
-        # Track whether we've sent the "From" header for this dialog
+        # Track whether we've sent the dialog header for this dialog
         header_sent = False
-        header_key = None  # to avoid duplicate headers if multiple relevant msgs
+        header_key = None  # display name used in orphan-header cleanup logging
         header_msg_id = None
         fwd_success = False
 
@@ -249,12 +284,12 @@ def main() -> int:
             if mdate <= last_ts:
                 continue  # already scanned
 
-            if not is_relevant(msg):
+            if not is_relevant(msg, users_map):
                 continue
 
-            # 3. Check dedup by dialog + message_id
+            # 3. Check dedup by dialog + message_id (in-memory only)
             key = f"{dialog_pid}:{msg.get('id')}"
-            if forwarded_ids.get(key) == msg.get("id"):
+            if key in forwarded_ids:
                 continue
 
             # 4. Send "From @..." header once per dialog
@@ -267,13 +302,13 @@ def main() -> int:
                 try:
                     result = api("messages.SendMessage", {
                         "peer": f"@{TARGET}",
-                        "message": f"From {display}: [fwd-{random.randint(0, 2_147_483_647):x}]",
+                        "message": f"{display}:",
                     })
                     time.sleep(0.3)
                     header_sent = True
                     header_key = display
                     header_msg_id = result.get("id") if isinstance(result, dict) else None
-                    log.info("Header: From %s", display)
+                    log.info("Header: %s", display)
                 except RuntimeError as e:
                     log.warning("Header send failed for %s: %s", display, e)
 
@@ -292,7 +327,7 @@ def main() -> int:
                 })
                 preview = (msg.get("message") or "")[:80]
                 log.info(">> %s | msg=%s", preview, mid)
-                forwarded_ids[key] = mid
+                forwarded_ids.add(key)
                 fwd_success = True
                 total_fwd += 1
                 if total_fwd >= MAX_FWD:
@@ -313,8 +348,8 @@ def main() -> int:
             log.info("Cap reached, stopping dialog scan")
             break
 
-    # 6. Save state
-    save_state(max(max_ts, now_ts), forwarded_ids)
+    # 6. Save state — only the latest ts (no forwarded_ids persisted)
+    save_state(max(max_ts, now_ts))
     log.info("Forwarded %d messages", total_fwd)
     return total_fwd
 
