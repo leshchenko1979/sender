@@ -12,7 +12,6 @@ from datetime import datetime, timezone
 
 import supabase
 
-import telegram_bridge as bridge
 from .core.clients import Client, load_clients
 from .core.config import AppSettings, get_settings
 from .infrastructure.supabase_logs import SupabaseLogHandler
@@ -193,14 +192,16 @@ def _fetch_group_stats(
         except Exception as exc:
             logger.warning(f"Failed to get onlines for {chat_id}: {exc}")
 
-        rows.append({
-            "chat_id": chat_id,
-            "client_name": client.name,
-            "members": members,
-            "online": online,
-            "name": name,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        })
+        rows.append(
+            {
+                "chat_id": chat_id,
+                "client_name": client.name,
+                "members": members,
+                "online": online,
+                "name": name,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
 
     try:
         supabase_client.table("group_stats").upsert(
@@ -221,7 +222,6 @@ def _fetch_group_daily_stats(
     supabase_client: supabase.Client,
 ) -> None:
     """Fetch recent messages from each group and count posts per day."""
-    from datetime import timedelta
 
     daily_rows = []
     for chat_id in chat_ids:
@@ -251,12 +251,14 @@ def _fetch_group_daily_stats(
                 day_counts[day] = day_counts.get(day, 0) + 1
 
             for day, count in day_counts.items():
-                daily_rows.append({
-                    "chat_id": chat_id,
-                    "client_name": client.name,
-                    "date": day,
-                    "post_count": count,
-                })
+                daily_rows.append(
+                    {
+                        "chat_id": chat_id,
+                        "client_name": client.name,
+                        "date": day,
+                        "post_count": count,
+                    }
+                )
         except Exception as exc:
             logger.warning(f"Failed to get history for {chat_id}: {exc}")
 
@@ -265,7 +267,9 @@ def _fetch_group_daily_stats(
             supabase_client.table("group_daily_stats").upsert(
                 daily_rows, on_conflict="chat_id,client_name,date"
             ).execute()
-            logger.info(f"Updated daily stats for {len(chat_ids)} groups in {client.name}")
+            logger.info(
+                f"Updated daily stats for {len(chat_ids)} groups in {client.name}"
+            )
         except Exception as exc:
             logger.warning(f"Failed to upsert daily stats for {client.name}: {exc}")
 
@@ -282,17 +286,19 @@ def _mirror_settings(
     """
     rows = []
     for i, setting in enumerate(settings):
-        rows.append({
-            "client_name": client.name,
-            "row_index": i,
-            "active": bool(setting.active),
-            "schedule": setting.schedule,
-            "chat_id": setting.chat_id,
-            "text": setting.text,
-            "error": setting.error,
-            "link": setting.link,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        })
+        rows.append(
+            {
+                "client_name": client.name,
+                "row_index": i,
+                "active": bool(setting.active),
+                "schedule": setting.schedule,
+                "chat_id": setting.chat_id,
+                "text": setting.text,
+                "error": setting.error,
+                "link": setting.link,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
 
     try:
         supabase_client.table("settings_mirror").upsert(

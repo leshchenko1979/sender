@@ -1,0 +1,3 @@
+FROM python:3-alpine
+COPY forward_to_main.py /forward_to_main.py
+CMD ["python3", "/forward_to_main.py"]
