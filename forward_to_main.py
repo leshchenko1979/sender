@@ -69,15 +69,15 @@ def api(method: str, params: dict | None = None) -> dict:
             try:
                 return json.loads(body)
             except (ValueError, json.JSONDecodeError) as e:
-                raise RuntimeError(f"bridge returned non-JSON (HTTP 200): {e}")
+                raise RuntimeError(f"bridge returned non-JSON (HTTP 200): {e}") from e
     except HTTPError as e:
         try:
             err = json.loads(e.read().decode())
-            raise RuntimeError(err.get("error", str(e)))
-        except (ValueError, json.JSONDecodeError):
-            raise RuntimeError(str(e))
+            raise RuntimeError(err.get("error", str(e))) from e
+        except (ValueError, json.JSONDecodeError) as exc:
+            raise RuntimeError(str(e)) from exc
     except URLError as e:
-        raise RuntimeError(f"bridge unreachable: {e}")
+        raise RuntimeError(f"bridge unreachable: {e}") from e
 
 
 # ── state persistence ──────────────────────────────────────────────────
@@ -146,9 +146,7 @@ def is_relevant(msg: dict, users: dict[int, dict]) -> bool:
         uid = msg.get("peer_id", {}).get("user_id")
         if uid == TELEGRAM_USER_ID:
             return False  # Telegram notifications (security codes, login)
-        if uid and uid in users and users[uid].get("bot", False):
-            return False  # Skip bots
-        return True
+        return not uid or uid not in users or not users[uid].get("bot", False)
     # Group/channel — only if Алексей was mentioned (NOT @all/@everyone)
     if ptype in ("peerChat", "PeerChat", "peerChannel", "PeerChannel"):
         if not msg.get("mentioned", False):
@@ -162,15 +160,19 @@ def is_relevant(msg: dict, users: dict[int, dict]) -> bool:
 
 def build_entity_maps(dialogs_data: dict) -> tuple[dict, dict]:
     """Build user_id->user and chat_id->chat lookup from GetDialogs response."""
-    users = {}
-    for u in dialogs_data.get("users", []):
-        if u.get("id"):
-            users[u["id"]] = u
-    chats = {}
-    for c in dialogs_data.get("chats", []):
-        if c.get("id"):
-            chats[c["id"]] = c
+    users = {u["id"]: u for u in dialogs_data.get("users", []) if u.get("id")}
+    chats = {c["id"]: c for c in dialogs_data.get("chats", []) if c.get("id")}
     return users, chats
+
+
+def parse_message_date(raw_date: int | str) -> int:
+    """Normalize message date to a unix timestamp int (int|str → int)."""
+    if isinstance(raw_date, str):
+        try:
+            return int(datetime.fromisoformat(raw_date).timestamp())
+        except ValueError:
+            return 0
+    return int(raw_date)
 
 
 def get_entity_display(
@@ -185,8 +187,7 @@ def get_entity_display(
         uid = peer.get("user_id")
         if uid and uid in users:
             u = users[uid]
-            username = u.get("username")
-            if username:
+            if username := u.get("username"):
                 return f"@{username}"
             name = f"{u.get('first_name', '')} {u.get('last_name', '')}".strip()
             return name or str(uid)
@@ -207,7 +208,136 @@ def get_entity_display(
     return str(peer)
 
 
-# ── main poll loop ─────────────────────────────────────────────────────
+def _forward_or_skip(msg: dict, from_pid: int, mid: int) -> bool:
+    """Forward one message. Returns True on success."""
+    try:
+        api(
+            "messages.ForwardMessages",
+            {
+                "from_peer": from_pid,
+                "id": [mid],
+                "to_peer": f"@{TARGET}",
+                "random_id": [random.getrandbits(64)],
+            },
+        )
+        preview = (msg.get("message") or "")[:80]
+        log.info(">> %s | msg=%s", preview, mid)
+        return True
+    except RuntimeError as e:
+        log.warning("! fwd fail msg=%s peer=%s: %s", mid, from_pid, e)
+        return False
+
+
+def _send_header(display: str) -> tuple[bool, int | None]:
+    """Send a dialog header message. Returns (success, message_id)."""
+    try:
+        result = api(
+            "messages.SendMessage",
+            {
+                "peer": f"@{TARGET}",
+                "message": f"{display}:",
+            },
+        )
+        time.sleep(0.3)
+        log.info("Header: %s", display)
+        return True, result.get("id")
+    except RuntimeError as e:
+        log.warning("Header send failed for %s: %s", display, e)
+        return False, None
+
+
+def _delete_header(header_msg_id: int, header_key: str | None = None) -> None:
+    """Delete a header message (orphan cleanup)."""
+    try:
+        api("messages.DeleteMessages", {"id": [header_msg_id]})
+        log.info("Deleted orphan header for %s", header_key or "?")
+    except RuntimeError as e:
+        log.warning("Could not delete orphan header: %s", e)
+
+
+def _poll_dialog(
+    dialog: dict,
+    users_map: dict[int, dict],
+    chats_map: dict[int, dict],
+    last_ts: int,
+    max_count: int,
+) -> tuple[int, int]:
+    """Process messages in a single dialog.
+
+    Returns (forwarded_count, max_ts_seen).  Stops early when
+    *max_count* messages have been forwarded.
+    """
+    p = dialog.get("peer", {})
+    dialog_pid = peer_id(p)
+    if not dialog_pid:
+        return 0, 0
+
+    try:
+        hist = api(
+            "messages.GetHistory",
+            {
+                "peer": dialog_pid,
+                "offset_id": 0,
+                "offset_date": 0,
+                "add_offset": 0,
+                "limit": 50,
+                "max_id": 0,
+                "min_id": 0,
+                "hash": 0,
+            },
+        )
+    except RuntimeError as e:
+        log.debug("GetHistory fail peer=%s: %s", dialog_pid, e)
+        return 0, 0
+
+    msgs = hist.get("messages", [])
+    header_sent = False
+    header_key = None
+    header_msg_id = None
+    fwd_success = False
+    count = 0
+    max_ts = 0
+
+    for msg in reversed(msgs):
+        mdate = parse_message_date(msg.get("date") or 0)
+        if mdate > max_ts:
+            max_ts = mdate
+        if mdate <= last_ts:
+            continue
+        if not is_relevant(msg, users_map):
+            continue
+
+        if not header_sent:
+            display = get_entity_display(p, users_map, chats_map)
+            if any(excl.lower() in display.lower() for excl in BLACKLIST_NAMES):
+                log.info("Skipping blacklisted: %s", display)
+                break
+            ok, mid_ = _send_header(display)
+            if not ok:
+                continue
+
+            header_sent = True
+            header_key = display
+            header_msg_id = mid_
+        mid = msg.get("id")
+        from_pid = peer_id(msg.get("peer_id", {}))
+        if not from_pid or not mid:
+            continue
+
+        if _forward_or_skip(msg, from_pid, mid):
+            fwd_success = True
+            count += 1
+            if count >= max_count:
+                break
+
+    # Cleanup orphan header if nothing was forwarded in this dialog
+    if header_sent and not fwd_success and header_msg_id:
+        _delete_header(header_msg_id, header_key)
+
+    return count, max_ts
+
+
+# ── main entry ─────────────────────────────────────────────────────────
 
 
 def main() -> int:
@@ -246,119 +376,17 @@ def main() -> int:
     max_ts = last_ts  # track the newest date seen
 
     for dialog in dialogs:
-        p = dialog.get("peer", {})
-        dialog_pid = peer_id(p)
-        if not dialog_pid:
-            continue
-
-        # 2. Get recent history for this dialog
-        try:
-            hist = api(
-                "messages.GetHistory",
-                {
-                    "peer": dialog_pid,
-                    "offset_id": 0,
-                    "offset_date": 0,
-                    "add_offset": 0,
-                    "limit": 50,
-                    "max_id": 0,
-                    "min_id": 0,
-                    "hash": 0,
-                },
-            )
-        except RuntimeError as e:
-            log.debug("GetHistory fail peer=%s: %s", dialog_pid, e)
-            continue
-
-        msgs = hist.get("messages", [])
-        # Track whether we've sent the dialog header for this dialog
-        header_sent = False
-        header_key = None  # display name used in orphan-header cleanup logging
-        header_msg_id = None
-        fwd_success = False
-
-        for msg in reversed(msgs):  # oldest first
-            mdate = msg.get("date") or 0
-            if isinstance(mdate, str):
-                try:
-                    from datetime import datetime as _dt
-
-                    mdate = int(_dt.fromisoformat(mdate).timestamp())
-                except ValueError:
-                    mdate = 0
-            else:
-                mdate = int(mdate)
-            if mdate > max_ts:
-                max_ts = mdate
-
-            if mdate <= last_ts:
-                continue  # already scanned
-
-            if not is_relevant(msg, users_map):
-                continue
-
-            # 4. Send dialog header once per dialog
-            if not header_sent:
-                display = get_entity_display(p, users_map, chats_map)
-                # Skip blacklisted dialogs
-                if any(excl.lower() in display.lower() for excl in BLACKLIST_NAMES):
-                    log.info("Skipping blacklisted: %s", display)
-                    break
-                try:
-                    result = api(
-                        "messages.SendMessage",
-                        {
-                            "peer": f"@{TARGET}",
-                            "message": f"{display}:",
-                        },
-                    )
-                    time.sleep(0.3)
-                    header_sent = True
-                    header_key = display
-                    header_msg_id = result.get("id")
-                    log.info("Header: %s", display)
-                except RuntimeError as e:
-                    log.warning("Header send failed for %s: %s", display, e)
-
-            # 5. Forward the message
-            mid = msg.get("id")
-            from_pid = peer_id(msg.get("peer_id", {}))
-            if not from_pid or not mid:
-                continue
-
-            try:
-                api(
-                    "messages.ForwardMessages",
-                    {
-                        "from_peer": from_pid,
-                        "id": [mid],
-                        "to_peer": f"@{TARGET}",
-                        "random_id": [random.getrandbits(64)],
-                    },
-                )
-                preview = (msg.get("message") or "")[:80]
-                log.info(">> %s | msg=%s", preview, mid)
-                fwd_success = True
-                total_fwd += 1
-                if total_fwd >= MAX_FWD:
-                    log.info("Reached cap of %d, stopping", MAX_FWD)
-                    break
-            except RuntimeError as e:
-                log.warning("! fwd fail msg=%s peer=%s: %s", mid, from_pid, e)
-
-        # Cleanup orphan header if nothing was forwarded
-        if header_sent and not fwd_success and header_msg_id:
-            try:
-                api("messages.DeleteMessages", {"id": [header_msg_id]})
-                log.info("Deleted orphan header for %s", header_key or "?")
-            except RuntimeError as e:
-                log.warning("Could not delete orphan header: %s", e)
-
+        fwd_count, dialog_max_ts = _poll_dialog(
+            dialog, users_map, chats_map, last_ts, MAX_FWD - total_fwd
+        )
+        total_fwd += fwd_count
+        if dialog_max_ts > max_ts:
+            max_ts = dialog_max_ts
         if total_fwd >= MAX_FWD:
-            log.info("Cap reached, stopping dialog scan")
+            log.info("Reached cap of %d, stopping", MAX_FWD)
             break
 
-    # 6. Save state — only the latest ts
+    # 3. Save state — only the latest ts
     save_state(max(max_ts, now_ts))
     log.info("Forwarded %d messages", total_fwd)
     return total_fwd
